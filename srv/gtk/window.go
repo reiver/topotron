@@ -3,8 +3,8 @@ package gtksrv
 import (
 	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
 
+	"topotron/lib/backend"
 	"topotron/lib/place"
-	"topotron/srv/log"
 )
 
 // Window is the main application window.
@@ -16,11 +16,16 @@ type Window struct {
 
 	// pages
 	placesPage *PlacesPage
+
+	// state
+	backend libbackend.FileBackend
 }
 
 // newWindow creates a new [Window] and attaches it to the given [adw.Application].
 func newWindow(app *adw.Application) *Window {
 	var receiver Window
+
+	receiver.backend = libbackend.LocalBackend{}
 
 	receiver.placesPage = newPlacesPage()
 	receiver.placesPage.OnActivated = receiver.onPlaceActivated
@@ -39,11 +44,15 @@ func newWindow(app *adw.Application) *Window {
 	return &receiver
 }
 
+// onPlaceActivated handles a place being tapped on the home screen.
 func (receiver *Window) onPlaceActivated(place libplace.Place) {
-	log := logsrv.Begin()
-	defer log.End()
+	receiver.pushFileBrowser(place.Path)
+}
 
-	log.Highlightf("place activated: %s (%s)", place.Name, place.Path)
-
-	// TODO: Phase 3 — push file browser page onto navView
+// pushFileBrowser creates a new [FileBrowserPage] for the given path
+// and pushes it onto the [adw.NavigationView].
+func (receiver *Window) pushFileBrowser(path string) {
+	page := newFileBrowserPage(receiver.backend, path)
+	page.OnDirectoryActivated = receiver.pushFileBrowser
+	receiver.navView.Push(page.page)
 }
