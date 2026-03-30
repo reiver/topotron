@@ -1,40 +1,49 @@
 package gtksrv
 
 import (
-	"github.com/diamondburned/gotk4/pkg/gtk/v4"
 	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
 
-	"topotron/cfg"
+	"topotron/lib/place"
+	"topotron/srv/log"
 )
 
 // Window is the main application window.
 type Window struct {
 	// gtk widgets
-	window  *adw.ApplicationWindow
-	header  *adw.HeaderBar
-	toolbar *adw.ToolbarView
-	content *gtk.Box
+	window       *adw.ApplicationWindow
+	navView      *adw.NavigationView
+	toastOverlay *adw.ToastOverlay
+
+	// pages
+	placesPage *PlacesPage
 }
 
 // newWindow creates a new [Window] and attaches it to the given [adw.Application].
 func newWindow(app *adw.Application) *Window {
 	var receiver Window
 
-	receiver.header = adw.NewHeaderBar()
+	receiver.placesPage = newPlacesPage()
+	receiver.placesPage.OnActivated = receiver.onPlaceActivated
 
-	receiver.content = gtk.NewBox(gtk.OrientationVertical, 0)
-	receiver.content.SetVExpand(true)
+	receiver.navView = adw.NewNavigationView()
+	receiver.navView.Add(receiver.placesPage.page)
 
-	receiver.toolbar = adw.NewToolbarView()
-	receiver.toolbar.AddTopBar(receiver.header)
-	receiver.toolbar.SetContent(receiver.content)
+	receiver.toastOverlay = adw.NewToastOverlay()
+	receiver.toastOverlay.SetChild(receiver.navView)
 
 	receiver.window = adw.NewApplicationWindow(&app.Application)
 	receiver.window.SetTitle("Topotron")
 	receiver.window.SetDefaultSize(360, 648)
-	receiver.window.SetContent(receiver.toolbar)
-
-	_ = cfg.Version
+	receiver.window.SetContent(receiver.toastOverlay)
 
 	return &receiver
+}
+
+func (receiver *Window) onPlaceActivated(place libplace.Place) {
+	log := logsrv.Begin()
+	defer log.End()
+
+	log.Highlightf("place activated: %s (%s)", place.Name, place.Path)
+
+	// TODO: Phase 3 — push file browser page onto navView
 }
