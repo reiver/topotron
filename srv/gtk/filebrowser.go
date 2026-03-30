@@ -55,6 +55,7 @@ type FileBrowserPage struct {
 	HasClipboard         func() bool
 	OnRefreshNeeded      func(path string)
 	OnSortChanged        func(order SortOrder)
+	OnProperties         func(entry libfileinfo.FileInfo)
 }
 
 // newFileBrowserPage creates a new [FileBrowserPage] for the given path.
@@ -319,10 +320,17 @@ func (receiver *FileBrowserPage) buildBottomBar() *gtk.Revealer {
 	spacer.SetHExpand(true)
 	actionBox.Append(spacer)
 
+	propertiesBtn := gtk.NewButtonFromIconName("dialog-information-symbolic")
+	propertiesBtn.SetTooltipText("Properties")
+	propertiesBtn.ConnectClicked(func() {
+		receiver.onProperties()
+	})
+
 	actionBox.Append(selectAllBtn)
 	actionBox.Append(cutBtn)
 	actionBox.Append(copyBtn)
 	actionBox.Append(renameBtn)
+	actionBox.Append(propertiesBtn)
 	actionBox.Append(deleteBtn)
 
 	spacer2 := gtk.NewBox(gtk.OrientationHorizontal, 0)
@@ -630,6 +638,18 @@ func (receiver *FileBrowserPage) onRename() {
 
 	// TODO: show rename dialog (Phase 9 polish)
 	_ = entries[0]
+}
+
+// onProperties shows properties for the single selected entry.
+func (receiver *FileBrowserPage) onProperties() {
+	entries := receiver.selectedEntries()
+	if 1 != len(entries) {
+		return
+	}
+
+	if nil != receiver.OnProperties {
+		receiver.OnProperties(entries[0])
+	}
 }
 
 // onNewFolder creates a new folder in the current directory.

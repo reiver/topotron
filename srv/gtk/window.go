@@ -122,8 +122,17 @@ func (receiver *Window) pushFileBrowserWithBackend(backend libbackend.FileBacken
 	page.HasClipboard = receiver.hasClipboard
 	page.OnRefreshNeeded = receiver.onRefreshNeeded
 	page.OnSortChanged = receiver.onSortChanged
+	page.OnProperties = func(entry libfileinfo.FileInfo) {
+		receiver.showProperties(backend, entry)
+	}
 	page.UpdatePasteButton()
 	receiver.navView.Push(page.page)
+}
+
+// showProperties pushes a [PropertiesPage] onto the navigation view.
+func (receiver *Window) showProperties(backend libbackend.FileBackend, entry libfileinfo.FileInfo) {
+	props := newPropertiesPage(backend, entry)
+	receiver.navView.Push(props.page)
 }
 
 // hasClipboard returns whether the clipboard has entries.
