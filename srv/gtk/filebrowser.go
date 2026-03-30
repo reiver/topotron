@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"time"
 
 	"github.com/diamondburned/gotk4/pkg/core/glib"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
@@ -17,7 +18,7 @@ import (
 )
 
 // FileBrowserPage displays the contents of a directory and supports
-// selection mode for file operations.
+// selection mode for file operations, search filtering, and sorting.
 type FileBrowserPage struct {
 	// gtk widgets
 	page           *adw.NavigationPage
@@ -28,14 +29,22 @@ type FileBrowserPage struct {
 	selectionLabel *gtk.Label
 	pasteBtn       *gtk.Button
 	newFolderBtn   *gtk.Button
+	searchBtn      *gtk.ToggleButton
+	searchBar      *gtk.SearchBar
+	searchEntry    *gtk.SearchEntry
+	sortBtn        *gtk.MenuButton
 
 	// state
-	backend     libbackend.FileBackend
-	path        string
-	entries     []libfileinfo.FileInfo
-	isSelecting bool
-	selected    map[int]bool
-	checks      []*gtk.CheckButton
+	backend        libbackend.FileBackend
+	path           string
+	entries        []libfileinfo.FileInfo
+	displayEntries []libfileinfo.FileInfo
+	isSelecting    bool
+	selected       map[int]bool
+	checks         []*gtk.CheckButton
+	sortOrder      SortOrder
+	searchText     string
+	searchTimer    *time.Timer
 
 	// callbacks
 	OnDirectoryActivated func(path string)
@@ -47,12 +56,13 @@ type FileBrowserPage struct {
 }
 
 // newFileBrowserPage creates a new [FileBrowserPage] for the given path.
-func newFileBrowserPage(backend libbackend.FileBackend, path string) *FileBrowserPage {
+func newFileBrowserPage(backend libbackend.FileBackend, path string, sortOrder SortOrder) *FileBrowserPage {
 	var receiver FileBrowserPage
 
 	receiver.backend = backend
 	receiver.path = path
 	receiver.selected = make(map[int]bool)
+	receiver.sortOrder = sortOrder
 
 	// file list
 	receiver.listBox = gtk.NewListBox()
@@ -66,19 +76,6 @@ func newFileBrowserPage(backend libbackend.FileBackend, path string) *FileBrowse
 	receiver.listBox.ConnectRowActivated(func(row *gtk.ListBoxRow) {
 		receiver.onRowActivated(row)
 	})
-
-	// long-press gesture for entering selection mode
-	longPress := gtk.NewGestureLongPress()
-	longPress.ConnectPressed(func(x, y float64) {
-		row := receiver.listBox.GetRowAtY(int(y))
-		if nil == row {
-			return
-		}
-		if !receiver.isSelecting {
-			receiver.enterSelectionMode(row.Index())
-		}
-	})
-	receiver.listBox.AddController(longPress)
 
 	scrolled := gtk.NewScrolledWindow()
 	scrolled.SetPolicy(gtk.PolicyNever, gtk.PolicyAutomatic)
@@ -105,11 +102,44 @@ func newFileBrowserPage(backend libbackend.FileBackend, path string) *FileBrowse
 	receiver.contentStack.AddNamed(placeholder, "placeholder")
 	receiver.contentStack.SetVisibleChildName("loading")
 
+	// search bar
+	receiver.searchEntry = gtk.NewSearchEntry()
+	receiver.searchEntry.SetHExpand(true)
+	receiver.searchEntry.ConnectSearchChanged(func() {
+		receiver.onSearchChanged()
+	})
+	receiver.searchEntry.ConnectStopSearch(func() {
+		receiver.searchBtn.SetActive(false)
+	})
+
+	receiver.searchBar = gtk.NewSearchBar()
+	receiver.searchBar.SetChild(receiver.searchEntry)
+	receiver.searchBar.ConnectEntry(receiver.searchEntry)
+
 	// bottom action bar for selection mode
 	receiver.bottomRevealer = receiver.buildBottomBar()
 
 	// header bar
 	receiver.header = adw.NewHeaderBar()
+
+	// search toggle button
+	receiver.searchBtn = gtk.NewToggleButton()
+	receiver.searchBtn.SetIconName("system-search-symbolic")
+	receiver.searchBtn.SetTooltipText("Search")
+	receiver.searchBtn.ConnectToggled(func() {
+		active := receiver.searchBtn.Active()
+		receiver.searchBar.SetSearchMode(active)
+		if !active {
+			receiver.searchEntry.SetText("")
+			receiver.searchText = ""
+			receiver.applyFilterAndSort()
+		}
+	})
+	receiver.header.PackEnd(receiver.searchBtn)
+
+	// sort menu button
+	receiver.sortBtn = receiver.buildSortMenu()
+	receiver.header.PackEnd(receiver.sortBtn)
 
 	// new folder button (visible in normal mode)
 	receiver.newFolderBtn = gtk.NewButtonFromIconName("folder-new-symbolic")
@@ -133,6 +163,7 @@ func newFileBrowserPage(backend libbackend.FileBackend, path string) *FileBrowse
 	// toolbar view
 	toolbar := adw.NewToolbarView()
 	toolbar.AddTopBar(receiver.header)
+	toolbar.AddTopBar(receiver.searchBar)
 	toolbar.SetContent(receiver.contentStack)
 	toolbar.AddBottomBar(receiver.bottomRevealer)
 
@@ -146,6 +177,83 @@ func newFileBrowserPage(backend libbackend.FileBackend, path string) *FileBrowse
 	receiver.load()
 
 	return &receiver
+}
+
+// buildSortMenu creates the sort order menu button.
+func (receiver *FileBrowserPage) buildSortMenu() *gtk.MenuButton {
+	listBox := gtk.NewListBox()
+	listBox.SetSelectionMode(gtk.SelectionNone)
+	listBox.AddCSSClass("boxed-list")
+
+	for _, order := range AllSortOrders() {
+		row := adw.NewActionRow()
+		row.SetTitle(SortLabel(order))
+		row.SetActivatable(true)
+
+		if order == receiver.sortOrder {
+			check := gtk.NewImageFromIconName("object-select-symbolic")
+			row.AddSuffix(check)
+		}
+
+		listBox.Append(row)
+	}
+
+	popover := gtk.NewPopover()
+	popover.SetChild(listBox)
+
+	listBox.ConnectRowActivated(func(row *gtk.ListBoxRow) {
+		index := row.Index()
+		orders := AllSortOrders()
+		if index >= 0 && index < len(orders) {
+			receiver.sortOrder = orders[index]
+			receiver.applyFilterAndSort()
+			popover.Popdown()
+
+			// rebuild menu to update check mark
+			receiver.rebuildSortMenu()
+		}
+	})
+
+	btn := gtk.NewMenuButton()
+	btn.SetIconName("view-sort-ascending-symbolic")
+	btn.SetTooltipText("Sort")
+	btn.SetPopover(popover)
+
+	return btn
+}
+
+// rebuildSortMenu rebuilds the sort menu to reflect the current sort order.
+func (receiver *FileBrowserPage) rebuildSortMenu() {
+	listBox := gtk.NewListBox()
+	listBox.SetSelectionMode(gtk.SelectionNone)
+	listBox.AddCSSClass("boxed-list")
+
+	for _, order := range AllSortOrders() {
+		row := adw.NewActionRow()
+		row.SetTitle(SortLabel(order))
+		row.SetActivatable(true)
+
+		if order == receiver.sortOrder {
+			check := gtk.NewImageFromIconName("object-select-symbolic")
+			row.AddSuffix(check)
+		}
+
+		listBox.Append(row)
+	}
+
+	popover := receiver.sortBtn.Popover()
+	popover.SetChild(listBox)
+
+	listBox.ConnectRowActivated(func(row *gtk.ListBoxRow) {
+		index := row.Index()
+		orders := AllSortOrders()
+		if index >= 0 && index < len(orders) {
+			receiver.sortOrder = orders[index]
+			receiver.applyFilterAndSort()
+			popover.Popdown()
+			receiver.rebuildSortMenu()
+		}
+	})
 }
 
 // buildBottomBar creates the selection mode action bar.
@@ -245,14 +353,26 @@ func (receiver *FileBrowserPage) load() {
 			}
 
 			receiver.entries = entries
-			receiver.populate()
+			receiver.applyFilterAndSort()
 		})
 	}()
 }
 
-// populate fills the [gtk.ListBox] with rows for each file entry.
+// applyFilterAndSort filters and sorts the entries, then rebuilds the list.
+func (receiver *FileBrowserPage) applyFilterAndSort() {
+	filtered := FilterEntries(receiver.entries, receiver.searchText)
+
+	display := make([]libfileinfo.FileInfo, len(filtered))
+	copy(display, filtered)
+	SortEntries(display, receiver.sortOrder)
+
+	receiver.displayEntries = display
+	receiver.populate()
+}
+
+// populate fills the [gtk.ListBox] with rows for the current display entries.
 func (receiver *FileBrowserPage) populate() {
-	if 0 == len(receiver.entries) {
+	if 0 == len(receiver.displayEntries) {
 		receiver.contentStack.SetVisibleChildName("placeholder")
 		return
 	}
@@ -260,7 +380,7 @@ func (receiver *FileBrowserPage) populate() {
 	receiver.checks = nil
 	receiver.clearListBox()
 
-	for i, entry := range receiver.entries {
+	for i, entry := range receiver.displayEntries {
 		row := receiver.buildRow(i, entry)
 		receiver.listBox.Append(row)
 	}
@@ -284,6 +404,16 @@ func (receiver *FileBrowserPage) buildRow(index int, entry libfileinfo.FileInfo)
 	row := adw.NewActionRow()
 	row.SetTitle(entry.Name)
 	row.SetActivatable(true)
+
+	// long-press gesture for entering selection mode
+	if !receiver.isSelecting {
+		idx := index
+		longPress := gtk.NewGestureLongPress()
+		longPress.ConnectPressed(func(x, y float64) {
+			receiver.enterSelectionMode(idx)
+		})
+		row.AddController(longPress)
+	}
 
 	if receiver.isSelecting {
 		check := gtk.NewCheckButton()
@@ -324,16 +454,32 @@ func (receiver *FileBrowserPage) Refresh() {
 	receiver.load()
 }
 
+// onSearchChanged handles search text changes with a 500ms debounce.
+func (receiver *FileBrowserPage) onSearchChanged() {
+	if nil != receiver.searchTimer {
+		receiver.searchTimer.Stop()
+	}
+
+	receiver.searchTimer = time.AfterFunc(500*time.Millisecond, func() {
+		glib.IdleAdd(func() {
+			receiver.searchText = receiver.searchEntry.Text()
+			receiver.applyFilterAndSort()
+		})
+	})
+}
+
 // enterSelectionMode switches to selection mode, selecting the given row.
 func (receiver *FileBrowserPage) enterSelectionMode(initialIndex int) {
 	receiver.isSelecting = true
 	receiver.selected = make(map[int]bool)
-	if initialIndex >= 0 && initialIndex < len(receiver.entries) {
+	if initialIndex >= 0 && initialIndex < len(receiver.displayEntries) {
 		receiver.selected[initialIndex] = true
 	}
 
 	receiver.newFolderBtn.SetVisible(false)
 	receiver.pasteBtn.SetVisible(false)
+	receiver.searchBtn.SetVisible(false)
+	receiver.sortBtn.SetVisible(false)
 	receiver.bottomRevealer.SetRevealChild(true)
 	receiver.populate()
 	receiver.updateSelectionCount()
@@ -345,14 +491,16 @@ func (receiver *FileBrowserPage) exitSelectionMode() {
 	receiver.selected = make(map[int]bool)
 
 	receiver.newFolderBtn.SetVisible(true)
+	receiver.searchBtn.SetVisible(true)
+	receiver.sortBtn.SetVisible(true)
 	receiver.UpdatePasteButton()
 	receiver.bottomRevealer.SetRevealChild(false)
 	receiver.populate()
 }
 
-// selectAll selects all entries.
+// selectAll selects all display entries.
 func (receiver *FileBrowserPage) selectAll() {
-	for i := range receiver.entries {
+	for i := range receiver.displayEntries {
 		receiver.selected[i] = true
 	}
 	for _, check := range receiver.checks {
@@ -374,7 +522,7 @@ func (receiver *FileBrowserPage) updateSelectionCount() {
 // selectedEntries returns the currently selected [libfileinfo.FileInfo] entries.
 func (receiver *FileBrowserPage) selectedEntries() []libfileinfo.FileInfo {
 	var result []libfileinfo.FileInfo
-	for i, entry := range receiver.entries {
+	for i, entry := range receiver.displayEntries {
 		if receiver.selected[i] {
 			result = append(result, entry)
 		}
@@ -385,7 +533,7 @@ func (receiver *FileBrowserPage) selectedEntries() []libfileinfo.FileInfo {
 // onRowActivated handles a tap on a row.
 func (receiver *FileBrowserPage) onRowActivated(row *gtk.ListBoxRow) {
 	index := row.Index()
-	if index < 0 || index >= len(receiver.entries) {
+	if index < 0 || index >= len(receiver.displayEntries) {
 		return
 	}
 
@@ -406,7 +554,7 @@ func (receiver *FileBrowserPage) onRowActivated(row *gtk.ListBoxRow) {
 		return
 	}
 
-	entry := receiver.entries[index]
+	entry := receiver.displayEntries[index]
 
 	if entry.IsDir {
 		if nil != receiver.OnDirectoryActivated {
@@ -452,7 +600,6 @@ func (receiver *FileBrowserPage) onDelete() {
 	log := logsrv.Begin()
 	defer log.End()
 
-	// delete directly (confirmation dialog can be added in Phase 9)
 	ctx := context.Background()
 	for _, entry := range entries {
 		err := receiver.backend.Remove(ctx, entry.Path)

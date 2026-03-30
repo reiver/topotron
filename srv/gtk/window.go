@@ -34,6 +34,7 @@ type Window struct {
 	backend       libbackend.FileBackend
 	clipboard     []libfileinfo.FileInfo
 	clipboardMode ClipboardMode
+	sortOrder     SortOrder
 }
 
 // newWindow creates a new [Window] and attaches it to the given [adw.Application].
@@ -41,6 +42,7 @@ func newWindow(app *adw.Application) *Window {
 	var receiver Window
 
 	receiver.backend = libbackend.LocalBackend{}
+	receiver.sortOrder = SortNameAsc
 
 	receiver.placesPage = newPlacesPage()
 	receiver.placesPage.OnActivated = receiver.onPlaceActivated
@@ -67,7 +69,7 @@ func (receiver *Window) onPlaceActivated(place libplace.Place) {
 // pushFileBrowser creates a new [FileBrowserPage] for the given path
 // and pushes it onto the [adw.NavigationView].
 func (receiver *Window) pushFileBrowser(path string) {
-	page := newFileBrowserPage(receiver.backend, path)
+	page := newFileBrowserPage(receiver.backend, path, receiver.sortOrder)
 	page.OnDirectoryActivated = receiver.pushFileBrowser
 	page.OnCut = receiver.onCut
 	page.OnCopy = receiver.onCopy
