@@ -43,6 +43,7 @@ type FileBrowserPage struct {
 	selected       map[int]bool
 	checks         []*gtk.CheckButton
 	sortOrder      SortOrder
+	showHidden     bool
 	searchText     string
 	searchTimer    *time.Timer
 
@@ -53,16 +54,18 @@ type FileBrowserPage struct {
 	OnPaste              func(destPath string)
 	HasClipboard         func() bool
 	OnRefreshNeeded      func(path string)
+	OnSortChanged        func(order SortOrder)
 }
 
 // newFileBrowserPage creates a new [FileBrowserPage] for the given path.
-func newFileBrowserPage(backend libbackend.FileBackend, path string, sortOrder SortOrder) *FileBrowserPage {
+func newFileBrowserPage(backend libbackend.FileBackend, path string, sortOrder SortOrder, showHidden bool) *FileBrowserPage {
 	var receiver FileBrowserPage
 
 	receiver.backend = backend
 	receiver.path = path
 	receiver.selected = make(map[int]bool)
 	receiver.sortOrder = sortOrder
+	receiver.showHidden = showHidden
 
 	// file list
 	receiver.listBox = gtk.NewListBox()
@@ -208,6 +211,9 @@ func (receiver *FileBrowserPage) buildSortMenu() *gtk.MenuButton {
 			receiver.sortOrder = orders[index]
 			receiver.applyFilterAndSort()
 			popover.Popdown()
+			if nil != receiver.OnSortChanged {
+				receiver.OnSortChanged(receiver.sortOrder)
+			}
 
 			// rebuild menu to update check mark
 			receiver.rebuildSortMenu()
@@ -251,6 +257,9 @@ func (receiver *FileBrowserPage) rebuildSortMenu() {
 			receiver.sortOrder = orders[index]
 			receiver.applyFilterAndSort()
 			popover.Popdown()
+			if nil != receiver.OnSortChanged {
+				receiver.OnSortChanged(receiver.sortOrder)
+			}
 			receiver.rebuildSortMenu()
 		}
 	})
@@ -340,7 +349,7 @@ func (receiver *FileBrowserPage) UpdatePasteButton() {
 // load reads the directory contents in a goroutine and populates the list.
 func (receiver *FileBrowserPage) load() {
 	go func() {
-		entries, err := receiver.backend.List(context.Background(), receiver.path, false)
+		entries, err := receiver.backend.List(context.Background(), receiver.path, receiver.showHidden)
 
 		glib.IdleAdd(func() {
 			if nil != err {

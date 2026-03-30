@@ -10,6 +10,7 @@ import (
 	"topotron/lib/place"
 	"topotron/srv/log"
 	"topotron/srv/op"
+	"topotron/srv/settings"
 )
 
 // ClipboardMode indicates whether entries were cut or copied.
@@ -32,9 +33,9 @@ type Window struct {
 
 	// state
 	backend       libbackend.FileBackend
+	settings      *settingsrv.Settings
 	clipboard     []libfileinfo.FileInfo
 	clipboardMode ClipboardMode
-	sortOrder     SortOrder
 }
 
 // newWindow creates a new [Window] and attaches it to the given [adw.Application].
@@ -42,9 +43,9 @@ func newWindow(app *adw.Application) *Window {
 	var receiver Window
 
 	receiver.backend = libbackend.LocalBackend{}
-	receiver.sortOrder = SortNameAsc
+	receiver.settings = settingsrv.New()
 
-	receiver.placesPage = newPlacesPage()
+	receiver.placesPage = newPlacesPage(receiver.settings)
 	receiver.placesPage.OnActivated = receiver.onPlaceActivated
 
 	receiver.navView = adw.NewNavigationView()
@@ -61,6 +62,16 @@ func newWindow(app *adw.Application) *Window {
 	return &receiver
 }
 
+// sortOrder returns the current [SortOrder] from settings.
+func (receiver *Window) sortOrder() SortOrder {
+	return SortOrder(receiver.settings.SortOrder())
+}
+
+// showHidden returns whether hidden files should be shown.
+func (receiver *Window) showHidden() bool {
+	return receiver.settings.ShowHidden()
+}
+
 // onPlaceActivated handles a place being tapped on the home screen.
 func (receiver *Window) onPlaceActivated(place libplace.Place) {
 	receiver.pushFileBrowser(place.Path)
@@ -69,13 +80,14 @@ func (receiver *Window) onPlaceActivated(place libplace.Place) {
 // pushFileBrowser creates a new [FileBrowserPage] for the given path
 // and pushes it onto the [adw.NavigationView].
 func (receiver *Window) pushFileBrowser(path string) {
-	page := newFileBrowserPage(receiver.backend, path, receiver.sortOrder)
+	page := newFileBrowserPage(receiver.backend, path, receiver.sortOrder(), receiver.showHidden())
 	page.OnDirectoryActivated = receiver.pushFileBrowser
 	page.OnCut = receiver.onCut
 	page.OnCopy = receiver.onCopy
 	page.OnPaste = receiver.onPaste
 	page.HasClipboard = receiver.hasClipboard
 	page.OnRefreshNeeded = receiver.onRefreshNeeded
+	page.OnSortChanged = receiver.onSortChanged
 	page.UpdatePasteButton()
 	receiver.navView.Push(page.page)
 }
@@ -140,12 +152,13 @@ func (receiver *Window) onPaste(destPath string) {
 	}
 }
 
-// onRefreshNeeded refreshes the file browser page for the given path,
-// if it is the currently visible page.
+// onSortChanged persists the sort order when changed in a file browser page.
+func (receiver *Window) onSortChanged(order SortOrder) {
+	receiver.settings.SetSortOrder(string(order))
+}
+
+// onRefreshNeeded refreshes the file browser page for the given path.
 func (receiver *Window) onRefreshNeeded(path string) {
-	// The visible page will be refreshed by the FileBrowserPage.Refresh call
-	// from within the page itself for delete operations.
-	// For paste, we trigger refresh here.
 	_ = path
 }
 

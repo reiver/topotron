@@ -5,6 +5,7 @@ import (
 	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
 
 	"topotron/lib/place"
+	"topotron/srv/settings"
 )
 
 // PlacesPage is the home screen showing browsable locations.
@@ -13,12 +14,12 @@ type PlacesPage struct {
 	page    *adw.NavigationPage
 	listBox *gtk.ListBox
 
-	// callback
+	// callbacks
 	OnActivated func(place libplace.Place)
 }
 
 // newPlacesPage creates a new [PlacesPage] populated with the default places.
-func newPlacesPage() *PlacesPage {
+func newPlacesPage(settings *settingsrv.Settings) *PlacesPage {
 	var receiver PlacesPage
 
 	receiver.listBox = gtk.NewListBox()
@@ -59,6 +60,10 @@ func newPlacesPage() *PlacesPage {
 
 	header := adw.NewHeaderBar()
 
+	// menu button with preferences
+	menuBtn := buildMainMenu(settings)
+	header.PackEnd(menuBtn)
+
 	toolbar := adw.NewToolbarView()
 	toolbar.AddTopBar(header)
 	toolbar.SetContent(clamp)
@@ -66,6 +71,41 @@ func newPlacesPage() *PlacesPage {
 	receiver.page = adw.NewNavigationPage(toolbar, "Topotron")
 
 	return &receiver
+}
+
+// buildMainMenu creates the app menu with preferences toggles.
+func buildMainMenu(settings *settingsrv.Settings) *gtk.MenuButton {
+	// show hidden toggle
+	hiddenCheck := gtk.NewCheckButton()
+	hiddenCheck.SetActive(settings.ShowHidden())
+	hiddenCheck.ConnectToggled(func() {
+		settings.SetShowHidden(hiddenCheck.Active())
+	})
+
+	hiddenRow := adw.NewActionRow()
+	hiddenRow.SetTitle("Show Hidden Files")
+	hiddenRow.SetActivatable(true)
+	hiddenRow.AddSuffix(hiddenCheck)
+	hiddenRow.SetActivatableWidget(hiddenCheck)
+
+	menuList := gtk.NewListBox()
+	menuList.SetSelectionMode(gtk.SelectionNone)
+	menuList.AddCSSClass("boxed-list")
+	menuList.SetMarginTop(6)
+	menuList.SetMarginBottom(6)
+	menuList.SetMarginStart(6)
+	menuList.SetMarginEnd(6)
+	menuList.Append(hiddenRow)
+
+	popover := gtk.NewPopover()
+	popover.SetChild(menuList)
+
+	btn := gtk.NewMenuButton()
+	btn.SetIconName("open-menu-symbolic")
+	btn.SetTooltipText("Menu")
+	btn.SetPopover(popover)
+
+	return btn
 }
 
 // newPlaceRow creates an [adw.ActionRow] for a single [libplace.Place].
