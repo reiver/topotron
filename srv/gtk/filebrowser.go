@@ -56,6 +56,7 @@ type FileBrowserPage struct {
 	OnRefreshNeeded      func(path string)
 	OnSortChanged        func(order SortOrder)
 	OnProperties         func(entry libfileinfo.FileInfo)
+	OnRename             func(entry libfileinfo.FileInfo)
 }
 
 // newFileBrowserPage creates a new [FileBrowserPage] for the given path.
@@ -636,8 +637,10 @@ func (receiver *FileBrowserPage) onRename() {
 		return
 	}
 
-	// TODO: show rename dialog (Phase 9 polish)
-	_ = entries[0]
+	if nil != receiver.OnRename {
+		receiver.OnRename(entries[0])
+	}
+	receiver.exitSelectionMode()
 }
 
 // onProperties shows properties for the single selected entry.

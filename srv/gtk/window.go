@@ -49,6 +49,9 @@ func newWindow(app *adw.Application) *Window {
 	receiver.placesPage.OnActivated = receiver.onPlaceActivated
 	receiver.placesPage.OnWebDAVActivated = receiver.onWebDAVActivated
 	receiver.placesPage.OnAddWebDAV = receiver.onAddWebDAV
+	receiver.placesPage.OnAbout = func() {
+		showAboutDialog(&receiver.window.Window)
+	}
 
 	receiver.navView = adw.NewNavigationView()
 	receiver.navView.Add(receiver.placesPage.page)
@@ -60,6 +63,8 @@ func newWindow(app *adw.Application) *Window {
 	receiver.window.SetTitle("Topotron")
 	receiver.window.SetDefaultSize(360, 648)
 	receiver.window.SetContent(receiver.toastOverlay)
+
+	setupShortcuts(&receiver)
 
 	return &receiver
 }
@@ -125,8 +130,18 @@ func (receiver *Window) pushFileBrowserWithBackend(backend libbackend.FileBacken
 	page.OnProperties = func(entry libfileinfo.FileInfo) {
 		receiver.showProperties(backend, entry)
 	}
+	page.OnRename = func(entry libfileinfo.FileInfo) {
+		receiver.showRename(backend, entry, path)
+	}
 	page.UpdatePasteButton()
 	receiver.navView.Push(page.page)
+}
+
+// showRename presents the rename dialog for a file or directory.
+func (receiver *Window) showRename(backend libbackend.FileBackend, entry libfileinfo.FileInfo, dirPath string) {
+	showRenameDialog(&receiver.window.Window, backend, entry, func() {
+		receiver.pushFileBrowserWithBackend(backend, dirPath)
+	})
 }
 
 // showProperties pushes a [PropertiesPage] onto the navigation view.

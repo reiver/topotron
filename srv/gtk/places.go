@@ -24,6 +24,7 @@ type PlacesPage struct {
 	OnActivated       func(place libplace.Place)
 	OnWebDAVActivated func(bookmark settingsrv.Bookmark)
 	OnAddWebDAV       func()
+	OnAbout           func()
 }
 
 // newPlacesPage creates a new [PlacesPage] populated with the default places
@@ -100,7 +101,11 @@ func newPlacesPage(settings *settingsrv.Settings) *PlacesPage {
 	header := adw.NewHeaderBar()
 
 	// menu button with preferences
-	menuBtn := buildMainMenu(settings)
+	menuBtn := buildMainMenu(settings, func() {
+		if nil != receiver.OnAbout {
+			receiver.OnAbout()
+		}
+	})
 	header.PackEnd(menuBtn)
 
 	toolbar := adw.NewToolbarView()
@@ -164,8 +169,8 @@ func (receiver *PlacesPage) buildWebDAVList() {
 	receiver.webdavGroup.Add(webdavListBox)
 }
 
-// buildMainMenu creates the app menu with preferences toggles.
-func buildMainMenu(settings *settingsrv.Settings) *gtk.MenuButton {
+// buildMainMenu creates the app menu with preferences toggles and about.
+func buildMainMenu(settings *settingsrv.Settings, onAbout func()) *gtk.MenuButton {
 	hiddenCheck := gtk.NewCheckButton()
 	hiddenCheck.SetActive(settings.ShowHidden())
 	hiddenCheck.ConnectToggled(func() {
@@ -178,6 +183,13 @@ func buildMainMenu(settings *settingsrv.Settings) *gtk.MenuButton {
 	hiddenRow.AddSuffix(hiddenCheck)
 	hiddenRow.SetActivatableWidget(hiddenCheck)
 
+	aboutRow := adw.NewActionRow()
+	aboutRow.SetTitle("About Topotron")
+	aboutRow.SetActivatable(true)
+
+	aboutIcon := gtk.NewImageFromIconName("help-about-symbolic")
+	aboutRow.AddPrefix(aboutIcon)
+
 	menuList := gtk.NewListBox()
 	menuList.SetSelectionMode(gtk.SelectionNone)
 	menuList.AddCSSClass("boxed-list")
@@ -186,9 +198,17 @@ func buildMainMenu(settings *settingsrv.Settings) *gtk.MenuButton {
 	menuList.SetMarginStart(6)
 	menuList.SetMarginEnd(6)
 	menuList.Append(hiddenRow)
+	menuList.Append(aboutRow)
 
 	popover := gtk.NewPopover()
 	popover.SetChild(menuList)
+
+	menuList.ConnectRowActivated(func(row *gtk.ListBoxRow) {
+		if 1 == row.Index() && nil != onAbout {
+			popover.Popdown()
+			onAbout()
+		}
+	})
 
 	btn := gtk.NewMenuButton()
 	btn.SetIconName("open-menu-symbolic")
