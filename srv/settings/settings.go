@@ -24,8 +24,9 @@ type Settings struct {
 }
 
 type settingsData struct {
-	ShowHidden bool   `json:"show-hidden"`
-	SortOrder  string `json:"sort-order"`
+	ShowHidden bool       `json:"show-hidden"`
+	SortOrder  string     `json:"sort-order"`
+	Bookmarks  []Bookmark `json:"bookmarks"`
 }
 
 // New creates a [Settings] instance, loading saved preferences from disk.
@@ -79,6 +80,38 @@ func (receiver *Settings) SortOrder() string {
 func (receiver *Settings) SetSortOrder(value string) {
 	receiver.mu.Lock()
 	receiver.data.SortOrder = value
+	receiver.mu.Unlock()
+
+	receiver.save()
+	receiver.notifyListeners()
+}
+
+// Bookmarks returns the saved WebDAV server bookmarks.
+func (receiver *Settings) Bookmarks() []Bookmark {
+	receiver.mu.Lock()
+	defer receiver.mu.Unlock()
+
+	result := make([]Bookmark, len(receiver.data.Bookmarks))
+	copy(result, receiver.data.Bookmarks)
+	return result
+}
+
+// AddBookmark adds a WebDAV server bookmark and saves.
+func (receiver *Settings) AddBookmark(bookmark Bookmark) {
+	receiver.mu.Lock()
+	receiver.data.Bookmarks = append(receiver.data.Bookmarks, bookmark)
+	receiver.mu.Unlock()
+
+	receiver.save()
+	receiver.notifyListeners()
+}
+
+// RemoveBookmark removes a WebDAV server bookmark by index and saves.
+func (receiver *Settings) RemoveBookmark(index int) {
+	receiver.mu.Lock()
+	if index >= 0 && index < len(receiver.data.Bookmarks) {
+		receiver.data.Bookmarks = append(receiver.data.Bookmarks[:index], receiver.data.Bookmarks[index+1:]...)
+	}
 	receiver.mu.Unlock()
 
 	receiver.save()

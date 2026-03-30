@@ -47,6 +47,8 @@ func newWindow(app *adw.Application) *Window {
 
 	receiver.placesPage = newPlacesPage(receiver.settings)
 	receiver.placesPage.OnActivated = receiver.onPlaceActivated
+	receiver.placesPage.OnWebDAVActivated = receiver.onWebDAVActivated
+	receiver.placesPage.OnAddWebDAV = receiver.onAddWebDAV
 
 	receiver.navView = adw.NewNavigationView()
 	receiver.navView.Add(receiver.placesPage.page)
@@ -74,14 +76,46 @@ func (receiver *Window) showHidden() bool {
 
 // onPlaceActivated handles a place being tapped on the home screen.
 func (receiver *Window) onPlaceActivated(place libplace.Place) {
-	receiver.pushFileBrowser(place.Path)
+	receiver.pushFileBrowserWithBackend(receiver.backend, place.Path)
+}
+
+// onWebDAVActivated handles a WebDAV bookmark being tapped.
+func (receiver *Window) onWebDAVActivated(bookmark settingsrv.Bookmark) {
+	log := logsrv.Begin()
+	defer log.End()
+
+	webdavBackend := libbackend.NewWebDAVBackend(bookmark.URL, bookmark.Username, bookmark.Password, bookmark.Name)
+
+	err := webdavBackend.Connect()
+	if nil != err {
+		log.Highlightf("could not connect to WebDAV: %s", bookmark.URL)
+		receiver.showToast("Could not connect to server")
+		return
+	}
+
+	receiver.pushFileBrowserWithBackend(webdavBackend, "/")
+}
+
+// onAddWebDAV shows the dialog for adding a new WebDAV server.
+func (receiver *Window) onAddWebDAV() {
+	showAddWebDAVDialog(receiver.window, receiver.settings, func() {
+		receiver.placesPage.RebuildWebDAVList()
+	})
 }
 
 // pushFileBrowser creates a new [FileBrowserPage] for the given path
-// and pushes it onto the [adw.NavigationView].
+// using the local backend and pushes it onto the [adw.NavigationView].
 func (receiver *Window) pushFileBrowser(path string) {
-	page := newFileBrowserPage(receiver.backend, path, receiver.sortOrder(), receiver.showHidden())
-	page.OnDirectoryActivated = receiver.pushFileBrowser
+	receiver.pushFileBrowserWithBackend(receiver.backend, path)
+}
+
+// pushFileBrowserWithBackend creates a new [FileBrowserPage] for the given
+// path and backend, and pushes it onto the [adw.NavigationView].
+func (receiver *Window) pushFileBrowserWithBackend(backend libbackend.FileBackend, path string) {
+	page := newFileBrowserPage(backend, path, receiver.sortOrder(), receiver.showHidden())
+	page.OnDirectoryActivated = func(subPath string) {
+		receiver.pushFileBrowserWithBackend(backend, subPath)
+	}
 	page.OnCut = receiver.onCut
 	page.OnCopy = receiver.onCopy
 	page.OnPaste = receiver.onPaste
