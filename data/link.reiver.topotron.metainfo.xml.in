@@ -4,16 +4,22 @@
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
   <name>Topotron</name>
-  <summary>Manage local and remote files</summary>
+  <summary>Manage local, remote, and network-shared files</summary>
   <description>
     <p>
       Topotron is a mobile-optimized file manager for GNOME.
-      It supports browsing local filesystems and remote filesystems via WebDAV.
+      It supports browsing local filesystems, remote filesystems via WebDAV,
+      and automatically discovers shared folders on your local network.
     </p>
     <p>
       Features include file browsing, copying, moving, deleting, renaming,
       searching, sorting, and creating new folders. Connect to WebDAV servers
       such as Nextcloud to manage remote files alongside local ones.
+    </p>
+    <p>
+      Shared folders from other GNOME desktops, NAS devices, and other
+      WebDAV servers on your network appear automatically — no manual
+      configuration needed.
     </p>
     <p>
       Designed for phones running Phosh, but works on any GNOME desktop.

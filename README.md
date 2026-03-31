@@ -2,7 +2,7 @@
 
 **topotron** is a file manager for GNOME, GTK 4, and Libadwaita optimized for a mobile user-experience.
 
-It supports both local filesystems and remote filesystems via WebDAV.
+It supports local filesystems, remote filesystems via WebDAV, and automatically discovers shared folders on your local network.
 
 ## Build
 

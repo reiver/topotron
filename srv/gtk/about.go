@@ -18,7 +18,7 @@ func showAboutDialog(parent *gtk.Window) {
 	about.SetWebsite("https://reiver.link")
 	about.SetLicenseType(gtk.LicenseMITX11)
 	about.SetCopyright("© 2026 Charles Iliya Krempeaux")
-	about.SetComments("A mobile-optimized file manager for GNOME.\nSupports local filesystems and WebDAV.")
+	about.SetComments("A mobile-optimized file manager for GNOME.\nSupports local filesystems, WebDAV, and network share discovery.")
 
 	about.Present()
 }

@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=Topotron
-Comment=Manage local and remote files
+Comment=Manage local, remote, and network-shared files
 Exec=topotron %U
 Icon=link.reiver.topotron
 Terminal=false
