@@ -57,6 +57,7 @@ type FileBrowserPage struct {
 	OnSortChanged        func(order SortOrder)
 	OnProperties         func(entry libfileinfo.FileInfo)
 	OnRename             func(entry libfileinfo.FileInfo)
+	OnPin                func(entry libfileinfo.FileInfo)
 }
 
 // newFileBrowserPage creates a new [FileBrowserPage] for the given path.
@@ -327,10 +328,17 @@ func (receiver *FileBrowserPage) buildBottomBar() *gtk.Revealer {
 		receiver.onProperties()
 	})
 
+	pinBtn := gtk.NewButtonFromIconName("view-pin-symbolic")
+	pinBtn.SetTooltipText("Pin to Places")
+	pinBtn.ConnectClicked(func() {
+		receiver.onPin()
+	})
+
 	actionBox.Append(selectAllBtn)
 	actionBox.Append(cutBtn)
 	actionBox.Append(copyBtn)
 	actionBox.Append(renameBtn)
+	actionBox.Append(pinBtn)
 	actionBox.Append(propertiesBtn)
 	actionBox.Append(deleteBtn)
 
@@ -653,6 +661,21 @@ func (receiver *FileBrowserPage) onProperties() {
 	if nil != receiver.OnProperties {
 		receiver.OnProperties(entries[0])
 	}
+}
+
+// onPin pins the single selected directory to the Places page.
+func (receiver *FileBrowserPage) onPin() {
+	entries := receiver.selectedEntries()
+	if 1 != len(entries) {
+		return
+	}
+	if !entries[0].IsDir {
+		return
+	}
+	if nil != receiver.OnPin {
+		receiver.OnPin(entries[0])
+	}
+	receiver.exitSelectionMode()
 }
 
 // onNewFolder creates a new folder in the current directory.

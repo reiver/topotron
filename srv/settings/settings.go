@@ -24,9 +24,10 @@ type Settings struct {
 }
 
 type settingsData struct {
-	ShowHidden bool       `json:"show-hidden"`
-	SortOrder  string     `json:"sort-order"`
-	Bookmarks  []Bookmark `json:"bookmarks"`
+	ShowHidden bool        `json:"show-hidden"`
+	SortOrder  string      `json:"sort-order"`
+	Bookmarks  []Bookmark  `json:"bookmarks"`
+	PinnedDirs *[]PinnedDir `json:"pinned-dirs,omitempty"`
 }
 
 // New creates a [Settings] instance, loading saved preferences from disk.
@@ -116,6 +117,113 @@ func (receiver *Settings) RemoveBookmark(index int) {
 
 	receiver.save()
 	receiver.notifyListeners()
+}
+
+// PinnedDirs returns the saved pinned directories.
+// On first call (never saved), seeds with default XDG directories.
+func (receiver *Settings) PinnedDirs() []PinnedDir {
+	receiver.mu.Lock()
+	defer receiver.mu.Unlock()
+
+	if nil == receiver.data.PinnedDirs {
+		defaults := defaultPinnedDirs()
+		receiver.data.PinnedDirs = &defaults
+	}
+
+	result := make([]PinnedDir, len(*receiver.data.PinnedDirs))
+	copy(result, *receiver.data.PinnedDirs)
+	return result
+}
+
+// AddPinnedDir adds a directory to the pinned list and saves.
+func (receiver *Settings) AddPinnedDir(dir PinnedDir) {
+	receiver.mu.Lock()
+	if nil == receiver.data.PinnedDirs {
+		defaults := defaultPinnedDirs()
+		receiver.data.PinnedDirs = &defaults
+	}
+
+	// avoid duplicates
+	for _, existing := range *receiver.data.PinnedDirs {
+		if existing.Path == dir.Path {
+			receiver.mu.Unlock()
+			return
+		}
+	}
+
+	*receiver.data.PinnedDirs = append(*receiver.data.PinnedDirs, dir)
+	receiver.mu.Unlock()
+
+	receiver.save()
+	receiver.notifyListeners()
+}
+
+// RemovePinnedDir removes a pinned directory by path and saves.
+func (receiver *Settings) RemovePinnedDir(path string) {
+	receiver.mu.Lock()
+	if nil == receiver.data.PinnedDirs {
+		receiver.mu.Unlock()
+		return
+	}
+
+	var updated []PinnedDir
+	for _, dir := range *receiver.data.PinnedDirs {
+		if dir.Path != path {
+			updated = append(updated, dir)
+		}
+	}
+	receiver.data.PinnedDirs = &updated
+	receiver.mu.Unlock()
+
+	receiver.save()
+	receiver.notifyListeners()
+}
+
+// HasPinnedDir returns whether a path is in the pinned list.
+func (receiver *Settings) HasPinnedDir(path string) bool {
+	receiver.mu.Lock()
+	defer receiver.mu.Unlock()
+
+	if nil == receiver.data.PinnedDirs {
+		return false
+	}
+
+	for _, dir := range *receiver.data.PinnedDirs {
+		if dir.Path == path {
+			return true
+		}
+	}
+
+	return false
+}
+
+func defaultPinnedDirs() []PinnedDir {
+	home, err := os.UserHomeDir()
+	if nil != err {
+		home = "/home"
+	}
+
+	candidates := []PinnedDir{
+		{Name: "Home", Path: home},
+		{Name: "Documents", Path: filepath.Join(home, "Documents")},
+		{Name: "Downloads", Path: filepath.Join(home, "Downloads")},
+		{Name: "Music", Path: filepath.Join(home, "Music")},
+		{Name: "Pictures", Path: filepath.Join(home, "Pictures")},
+		{Name: "Videos", Path: filepath.Join(home, "Videos")},
+	}
+
+	var result []PinnedDir
+	for _, dir := range candidates {
+		info, err := os.Stat(dir.Path)
+		if nil != err || !info.IsDir() {
+			continue
+		}
+		result = append(result, dir)
+	}
+
+	result = append(result, PinnedDir{Name: "Root", Path: "/"})
+
+	return result
 }
 
 // OnChanged registers a listener that is called when any setting changes.

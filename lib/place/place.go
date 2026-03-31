@@ -76,6 +76,31 @@ func DefaultPlaces() []Place {
 	return result
 }
 
+// IconForPath returns the appropriate icon for a directory path.
+// Known XDG paths get special icons; others get folder-symbolic.
+func IconForPath(path string) string {
+	home := homeDir()
+
+	switch path {
+	case home:
+		return "user-home-symbolic"
+	case filepath.Join(home, "Documents"):
+		return "folder-documents-symbolic"
+	case filepath.Join(home, "Downloads"):
+		return "folder-download-symbolic"
+	case filepath.Join(home, "Music"):
+		return "folder-music-symbolic"
+	case filepath.Join(home, "Pictures"):
+		return "folder-pictures-symbolic"
+	case filepath.Join(home, "Videos"):
+		return "folder-videos-symbolic"
+	case "/":
+		return "drive-harddisk-symbolic"
+	default:
+		return "folder-symbolic"
+	}
+}
+
 func homeDir() string {
 	home, err := os.UserHomeDir()
 	if nil != err {

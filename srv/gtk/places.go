@@ -12,12 +12,16 @@ import (
 // PlacesPage is the home screen showing browsable locations.
 type PlacesPage struct {
 	// gtk widgets
-	page           *adw.NavigationPage
-	contentBox     *gtk.Box
-	localListBox   *gtk.ListBox
-	networkGroup   *adw.PreferencesGroup
-	networkListBox *gtk.ListBox
-	webdavGroup    *adw.PreferencesGroup
+	page            *adw.NavigationPage
+	contentBox      *gtk.Box
+	localGroup      *adw.PreferencesGroup
+	localListBox    *gtk.ListBox
+	networkGroup    *adw.PreferencesGroup
+	networkListBox  *gtk.ListBox
+	webdavGroup     *adw.PreferencesGroup
+	unpinRevealer   *gtk.Revealer
+	unpinLabel      *gtk.Label
+	unpinPath       string
 
 	// state
 	settings         *settingsrv.Settings
@@ -30,6 +34,7 @@ type PlacesPage struct {
 	OnWebDAVActivated  func(bookmark settingsrv.Bookmark)
 	OnAddWebDAV        func()
 	OnAbout            func()
+	OnUnpin            func(path string)
 }
 
 // newPlacesPage creates a new [PlacesPage] populated with the default places,
@@ -39,34 +44,19 @@ func newPlacesPage(settings *settingsrv.Settings) *PlacesPage {
 
 	receiver.settings = settings
 
-	// local places
-	receiver.localPlaces = libplace.DefaultPlaces()
-
+	// local places (from pinned dirs in settings)
 	receiver.localListBox = gtk.NewListBox()
 	receiver.localListBox.SetSelectionMode(gtk.SelectionNone)
 	receiver.localListBox.AddCSSClass("boxed-list")
 
-	for _, p := range receiver.localPlaces {
-		row := newPlaceRow(p)
-		receiver.localListBox.Append(row)
-	}
+	receiver.localGroup = adw.NewPreferencesGroup()
+	receiver.localGroup.SetTitle("Local")
+	receiver.localGroup.Add(receiver.localListBox)
 
-	receiver.localListBox.ConnectRowActivated(func(row *gtk.ListBoxRow) {
-		if nil == receiver.OnActivated {
-			return
-		}
+	// unpin revealer (bottom popup)
+	receiver.unpinRevealer = receiver.buildUnpinBar()
 
-		index := row.Index()
-		if index < 0 || index >= len(receiver.localPlaces) {
-			return
-		}
-
-		receiver.OnActivated(receiver.localPlaces[index])
-	})
-
-	localGroup := adw.NewPreferencesGroup()
-	localGroup.SetTitle("Local")
-	localGroup.Add(receiver.localListBox)
+	receiver.buildLocalList()
 
 	// network section (auto-discovered services)
 	receiver.networkListBox = gtk.NewListBox()
@@ -113,7 +103,7 @@ func newPlacesPage(settings *settingsrv.Settings) *PlacesPage {
 	receiver.contentBox.SetMarginBottom(12)
 	receiver.contentBox.SetMarginStart(12)
 	receiver.contentBox.SetMarginEnd(12)
-	receiver.contentBox.Append(localGroup)
+	receiver.contentBox.Append(receiver.localGroup)
 	receiver.contentBox.Append(receiver.networkGroup)
 	receiver.contentBox.Append(receiver.webdavGroup)
 	receiver.contentBox.Append(addBtn)
@@ -140,6 +130,7 @@ func newPlacesPage(settings *settingsrv.Settings) *PlacesPage {
 	toolbar := adw.NewToolbarView()
 	toolbar.AddTopBar(header)
 	toolbar.SetContent(clamp)
+	toolbar.AddBottomBar(receiver.unpinRevealer)
 
 	receiver.page = adw.NewNavigationPage(toolbar, "Topotron")
 
@@ -216,6 +207,111 @@ func (receiver *PlacesPage) rebuildNetworkList() {
 	}
 
 	receiver.networkGroup.SetVisible(len(receiver.networkServices) > 0)
+}
+
+// RebuildLocalList refreshes the local pinned directories section.
+func (receiver *PlacesPage) RebuildLocalList() {
+	receiver.buildLocalList()
+}
+
+// buildLocalList populates the local section from pinned dirs in settings.
+func (receiver *PlacesPage) buildLocalList() {
+	// clear existing rows
+	for {
+		child := receiver.localListBox.FirstChild()
+		if nil == child {
+			break
+		}
+		receiver.localListBox.Remove(child)
+	}
+
+	// read pinned dirs from settings
+	pinnedDirs := receiver.settings.PinnedDirs()
+	receiver.localPlaces = nil
+
+	for _, dir := range pinnedDirs {
+		place := libplace.Place{
+			Name: dir.Name,
+			Path: dir.Path,
+			Icon: libplace.IconForPath(dir.Path),
+		}
+		receiver.localPlaces = append(receiver.localPlaces, place)
+
+		row := newPlaceRow(place)
+
+		// long-press to unpin
+		dirPath := dir.Path
+		dirName := dir.Name
+		longPress := gtk.NewGestureLongPress()
+		longPress.ConnectPressed(func(x, y float64) {
+			receiver.showUnpinBar(dirName, dirPath)
+		})
+		row.AddController(longPress)
+
+		receiver.localListBox.Append(row)
+	}
+
+	receiver.localListBox.ConnectRowActivated(func(row *gtk.ListBoxRow) {
+		if nil == receiver.OnActivated {
+			return
+		}
+
+		index := row.Index()
+		if index < 0 || index >= len(receiver.localPlaces) {
+			return
+		}
+
+		receiver.OnActivated(receiver.localPlaces[index])
+	})
+}
+
+// buildUnpinBar creates the unpin confirmation bar.
+func (receiver *PlacesPage) buildUnpinBar() *gtk.Revealer {
+	receiver.unpinLabel = gtk.NewLabel("")
+
+	unpinBtn := gtk.NewButtonWithLabel("Unpin")
+	unpinBtn.AddCSSClass("destructive-action")
+	unpinBtn.ConnectClicked(func() {
+		if nil != receiver.OnUnpin && "" != receiver.unpinPath {
+			receiver.OnUnpin(receiver.unpinPath)
+		}
+		receiver.unpinRevealer.SetRevealChild(false)
+	})
+
+	cancelBtn := gtk.NewButtonWithLabel("Cancel")
+	cancelBtn.ConnectClicked(func() {
+		receiver.unpinRevealer.SetRevealChild(false)
+	})
+
+	box := gtk.NewBox(gtk.OrientationHorizontal, 6)
+	box.SetMarginTop(6)
+	box.SetMarginBottom(6)
+	box.SetMarginStart(12)
+	box.SetMarginEnd(12)
+	box.SetHAlign(gtk.AlignCenter)
+
+	box.Append(receiver.unpinLabel)
+
+	spacer := gtk.NewBox(gtk.OrientationHorizontal, 0)
+	spacer.SetHExpand(true)
+	box.Append(spacer)
+
+	box.Append(cancelBtn)
+	box.Append(unpinBtn)
+
+	revealer := gtk.NewRevealer()
+	revealer.SetChild(box)
+	revealer.SetRevealChild(false)
+	revealer.SetTransitionType(gtk.RevealerTransitionTypeSlideUp)
+
+	return revealer
+}
+
+// showUnpinBar shows the unpin confirmation bar for a directory.
+func (receiver *PlacesPage) showUnpinBar(name, path string) {
+	receiver.unpinPath = path
+	receiver.unpinLabel.SetLabel("Unpin \"" + name + "\"?")
+	receiver.unpinRevealer.SetRevealChild(true)
 }
 
 // RebuildWebDAVList refreshes the WebDAV bookmarks section.

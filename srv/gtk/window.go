@@ -57,6 +57,11 @@ func newWindow(app *adw.Application) *Window {
 	receiver.placesPage.OnAbout = func() {
 		showAboutDialog(&receiver.window.Window)
 	}
+	receiver.placesPage.OnUnpin = func(path string) {
+		receiver.settings.RemovePinnedDir(path)
+		receiver.placesPage.RebuildLocalList()
+		receiver.showToast("Unpinned from Places")
+	}
 
 	receiver.navView = adw.NewNavigationView()
 	receiver.navView.Add(receiver.placesPage.page)
@@ -168,6 +173,14 @@ func (receiver *Window) pushFileBrowserWithBackend(backend libbackend.FileBacken
 	}
 	page.OnRename = func(entry libfileinfo.FileInfo) {
 		receiver.showRename(backend, entry, path)
+	}
+	page.OnPin = func(entry libfileinfo.FileInfo) {
+		receiver.settings.AddPinnedDir(settingsrv.PinnedDir{
+			Name: entry.Name,
+			Path: entry.Path,
+		})
+		receiver.placesPage.RebuildLocalList()
+		receiver.showToast("Pinned to Places")
 	}
 	page.UpdatePasteButton()
 	receiver.navView.Push(page.page)
