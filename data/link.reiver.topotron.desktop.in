@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Topotron
+Comment=Manage local and remote files
+Exec=topotron %U
+Icon=link.reiver.topotron
+Terminal=false
+Type=Application
+Categories=System;FileManager;
+Keywords=file;manager;webdav;
+MimeType=inode/directory;

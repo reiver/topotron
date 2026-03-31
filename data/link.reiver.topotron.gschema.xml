@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="link.reiver.topotron" path="/link/reiver/topotron/">
+    <key name="show-hidden" type="b">
+      <default>false</default>
+      <summary>Show hidden files</summary>
+      <description>Whether to show files and directories that start with a dot.</description>
+    </key>
+    <key name="sort-order" type="s">
+      <default>'name-asc'</default>
+      <summary>Sort order for file listings</summary>
+      <description>How files are sorted in directory listings.</description>
+      <choices>
+        <choice value='name-asc'/>
+        <choice value='name-desc'/>
+        <choice value='date-asc'/>
+        <choice value='date-desc'/>
+        <choice value='size-asc'/>
+        <choice value='size-desc'/>
+      </choices>
+    </key>
+    <key name="webdav-bookmarks" type="s">
+      <default>''</default>
+      <summary>WebDAV server bookmarks</summary>
+      <description>JSON-encoded list of WebDAV server bookmarks.</description>
+    </key>
+  </schema>
+</schemalist>

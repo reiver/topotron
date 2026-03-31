@@ -1,0 +1,32 @@
+{
+  "app-id": "link.reiver.topotron",
+  "runtime": "org.gnome.Platform",
+  "runtime-version": "47",
+  "sdk": "org.gnome.Sdk",
+  "sdk-extensions": ["org.freedesktop.Sdk.Extension.golang"],
+  "command": "topotron",
+  "finish-args": [
+    "--share=ipc",
+    "--share=network",
+    "--device=dri",
+    "--socket=fallback-x11",
+    "--socket=wayland",
+    "--filesystem=home",
+    "--filesystem=/media",
+    "--filesystem=/run/media"
+  ],
+  "build-options": {
+    "env": {
+      "GOBIN": "/app/bin",
+      "GOROOT": "/usr/lib/sdk/golang"
+    }
+  },
+  "modules": [
+    {
+      "name": "topotron",
+      "builddir": true,
+      "buildsystem": "meson",
+      "sources": [{"type": "dir", "path": "../.."}]
+    }
+  ]
+}

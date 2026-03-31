@@ -1,0 +1,19 @@
+/* Topotron — custom styles */
+
+/* Ensure touch-friendly row heights (min 48dp) */
+.boxed-list row {
+  min-height: 48px;
+}
+
+/* Bottom action bar styling */
+.bottom-action-bar {
+  background-color: @headerbar_bg_color;
+  border-top: 1px solid @borders;
+  padding: 6px;
+}
+
+/* Selection mode action buttons spacing */
+.bottom-action-bar button {
+  min-width: 48px;
+  min-height: 48px;
+}

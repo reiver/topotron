@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3584e4"/>
+      <stop offset="100%" stop-color="#1a5fb4"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect x="8" y="8" width="112" height="112" rx="24" fill="url(#bg)"/>
+  <!-- Folder shape -->
+  <path d="M32 42 h24 l6 -8 h34 a4 4 0 0 1 4 4 v48 a4 4 0 0 1 -4 4 H32 a4 4 0 0 1 -4 -4 V46 a4 4 0 0 1 4 -4z" fill="#ffffff" opacity="0.9"/>
+  <!-- Globe overlay (WebDAV) -->
+  <circle cx="84" cy="76" r="16" fill="none" stroke="#1a5fb4" stroke-width="2.5"/>
+  <ellipse cx="84" cy="76" rx="8" ry="16" fill="none" stroke="#1a5fb4" stroke-width="1.5"/>
+  <line x1="68" y1="76" x2="100" y2="76" stroke="#1a5fb4" stroke-width="1.5"/>
+</svg>

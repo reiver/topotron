@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+  <!-- Folder -->
+  <path d="M2 4 h4 l1.5 -2 h6.5 a1 1 0 0 1 1 1 v9 a1 1 0 0 1 -1 1 H2 a1 1 0 0 1 -1 -1 V5 a1 1 0 0 1 1 -1z" fill="currentColor"/>
+</svg>

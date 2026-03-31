@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>link.reiver.topotron</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Topotron</name>
+  <summary>Manage local and remote files</summary>
+  <description>
+    <p>
+      Topotron is a mobile-optimized file manager for GNOME.
+      It supports browsing local filesystems and remote filesystems via WebDAV.
+    </p>
+    <p>
+      Features include file browsing, copying, moving, deleting, renaming,
+      searching, sorting, and creating new folders. Connect to WebDAV servers
+      such as Nextcloud to manage remote files alongside local ones.
+    </p>
+    <p>
+      Designed for phones running Phosh, but works on any GNOME desktop.
+    </p>
+  </description>
+  <launchable type="desktop-id">link.reiver.topotron.desktop</launchable>
+  <url type="homepage">https://reiver.link</url>
+  <content_rating type="oars-1.1" />
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <recommends>
+    <control>pointing</control>
+    <control>keyboard</control>
+    <control>touch</control>
+  </recommends>
+  <releases>
+    <release version="0.1.0" date="2026-03-30">
+      <description>
+        <p>Initial release.</p>
+      </description>
+    </release>
+  </releases>
+</component>
