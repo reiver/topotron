@@ -4,9 +4,10 @@
 
 It supports local filesystems, remote filesystems via WebDAV, and automatically discovers shared folders on your local network.
 
-## User Guide
+## Other Files
 
-The **user guide** for **topotron** is at: [GUIDE.md](GUIDE.md)
+* The **user guide** for **topotron** is at: [GUIDE.md](GUIDE.md)
+* THe **developer guide** for **topotron** is at: [HACKING.md](HACKING.md)
 
 ## Build
 
