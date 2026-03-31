@@ -18,15 +18,16 @@ It supports local filesystems, remote filesystems via WebDAV, and automatically 
 - GTK 4 >= 4.10 (development headers)
 - Libadwaita >= 1.4 (development headers)
 - GLib 2.0 (development headers)
+- GObject Introspection (development headers)
 
 On Fedora:
 ```bash
-sudo dnf install gcc gtk4-devel libadwaita-devel glib2-devel
+sudo dnf install gcc gtk4-devel libadwaita-devel glib2-devel gobject-introspection-devel
 ```
 
 On Debian/Ubuntu:
 ```bash
-sudo apt install gcc libgtk-4-dev libadwaita-1-dev libglib2.0-dev
+sudo apt install gcc libgtk-4-dev libadwaita-1-dev libglib2.0-dev libgirepository1.0-dev
 ```
 
 ### Development Build
