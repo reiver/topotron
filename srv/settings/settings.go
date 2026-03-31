@@ -197,6 +197,26 @@ func (receiver *Settings) HasPinnedDir(path string) bool {
 	return false
 }
 
+// SetPinnedDirIcon sets the icon for a pinned directory by path and saves.
+func (receiver *Settings) SetPinnedDirIcon(path, icon string) {
+	receiver.mu.Lock()
+	if nil == receiver.data.PinnedDirs {
+		receiver.mu.Unlock()
+		return
+	}
+
+	for i, dir := range *receiver.data.PinnedDirs {
+		if dir.Path == path {
+			(*receiver.data.PinnedDirs)[i].Icon = icon
+			break
+		}
+	}
+	receiver.mu.Unlock()
+
+	receiver.save()
+	receiver.notifyListeners()
+}
+
 // ResetPinnedDirs resets the pinned directories to the defaults and saves.
 func (receiver *Settings) ResetPinnedDirs() {
 	receiver.mu.Lock()

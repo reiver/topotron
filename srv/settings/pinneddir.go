@@ -4,4 +4,5 @@ package settingsrv
 type PinnedDir struct {
 	Name string `json:"name"`
 	Path string `json:"path"`
+	Icon string `json:"icon,omitempty"`
 }

@@ -67,6 +67,12 @@ func newWindow(app *adw.Application) *Window {
 		receiver.placesPage.RebuildLocalList()
 		receiver.showToast("Pinned folders reset")
 	}
+	receiver.placesPage.OnChangeIcon = func(path, currentIcon string) {
+		showIconPicker(&receiver.window.Window, currentIcon, func(icon string) {
+			receiver.settings.SetPinnedDirIcon(path, icon)
+			receiver.placesPage.RebuildLocalList()
+		})
+	}
 
 	receiver.navView = adw.NewNavigationView()
 	receiver.navView.Add(receiver.placesPage.page)

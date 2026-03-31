@@ -19,9 +19,10 @@ type PlacesPage struct {
 	networkGroup    *adw.PreferencesGroup
 	networkListBox  *gtk.ListBox
 	webdavGroup     *adw.PreferencesGroup
-	unpinRevealer   *gtk.Revealer
-	unpinLabel      *gtk.Label
-	unpinPath       string
+	unpinRevealer    *gtk.Revealer
+	unpinLabel       *gtk.Label
+	unpinPath        string
+	unpinCurrentIcon string
 
 	// state
 	settings         *settingsrv.Settings
@@ -35,6 +36,7 @@ type PlacesPage struct {
 	OnAddWebDAV        func()
 	OnAbout            func()
 	OnUnpin            func(path string)
+	OnChangeIcon       func(path string, currentIcon string)
 	OnResetPins        func()
 }
 
@@ -235,20 +237,27 @@ func (receiver *PlacesPage) buildLocalList() {
 	receiver.localPlaces = nil
 
 	for _, dir := range pinnedDirs {
+		icon := dir.Icon
+		if "" == icon {
+			icon = libplace.IconForPath(dir.Path)
+		}
+
 		place := libplace.Place{
 			Name: dir.Name,
 			Path: dir.Path,
-			Icon: libplace.IconForPath(dir.Path),
+			Icon: icon,
 		}
 		receiver.localPlaces = append(receiver.localPlaces, place)
 
 		row := newPlaceRow(place)
 
-		// long-press to unpin
+		// long-press to unpin / change icon
 		dirPath := dir.Path
 		dirName := dir.Name
+		dirIcon := icon
 		longPress := gtk.NewGestureLongPress()
 		longPress.ConnectPressed(func(x, y float64) {
+			receiver.unpinCurrentIcon = dirIcon
 			receiver.showUnpinBar(dirName, dirPath)
 		})
 		row.AddController(longPress)
@@ -283,6 +292,15 @@ func (receiver *PlacesPage) buildUnpinBar() *gtk.Revealer {
 		receiver.unpinRevealer.SetRevealChild(false)
 	})
 
+	iconBtn := gtk.NewButtonFromIconName("preferences-desktop-appearance-symbolic")
+	iconBtn.SetTooltipText("Change Icon")
+	iconBtn.ConnectClicked(func() {
+		receiver.unpinRevealer.SetRevealChild(false)
+		if nil != receiver.OnChangeIcon && "" != receiver.unpinPath {
+			receiver.OnChangeIcon(receiver.unpinPath, receiver.unpinCurrentIcon)
+		}
+	})
+
 	cancelBtn := gtk.NewButtonWithLabel("Cancel")
 	cancelBtn.ConnectClicked(func() {
 		receiver.unpinRevealer.SetRevealChild(false)
@@ -302,6 +320,7 @@ func (receiver *PlacesPage) buildUnpinBar() *gtk.Revealer {
 	box.Append(spacer)
 
 	box.Append(cancelBtn)
+	box.Append(iconBtn)
 	box.Append(unpinBtn)
 
 	revealer := gtk.NewRevealer()
