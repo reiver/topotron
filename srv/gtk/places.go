@@ -5,30 +5,35 @@ import (
 	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
 
 	"topotron/lib/place"
+	"topotron/srv/discover"
 	"topotron/srv/settings"
 )
 
 // PlacesPage is the home screen showing browsable locations.
 type PlacesPage struct {
 	// gtk widgets
-	page         *adw.NavigationPage
-	contentBox   *gtk.Box
-	localListBox *gtk.ListBox
-	webdavGroup  *adw.PreferencesGroup
+	page           *adw.NavigationPage
+	contentBox     *gtk.Box
+	localListBox   *gtk.ListBox
+	networkGroup   *adw.PreferencesGroup
+	networkListBox *gtk.ListBox
+	webdavGroup    *adw.PreferencesGroup
 
 	// state
-	settings   *settingsrv.Settings
-	localPlaces []libplace.Place
+	settings         *settingsrv.Settings
+	localPlaces      []libplace.Place
+	networkServices  []discoversrv.DiscoveredService
 
 	// callbacks
-	OnActivated       func(place libplace.Place)
-	OnWebDAVActivated func(bookmark settingsrv.Bookmark)
-	OnAddWebDAV       func()
-	OnAbout           func()
+	OnActivated        func(place libplace.Place)
+	OnNetworkActivated func(service discoversrv.DiscoveredService)
+	OnWebDAVActivated  func(bookmark settingsrv.Bookmark)
+	OnAddWebDAV        func()
+	OnAbout            func()
 }
 
-// newPlacesPage creates a new [PlacesPage] populated with the default places
-// and any saved WebDAV bookmarks.
+// newPlacesPage creates a new [PlacesPage] populated with the default places,
+// discovered network services, and saved WebDAV bookmarks.
 func newPlacesPage(settings *settingsrv.Settings) *PlacesPage {
 	var receiver PlacesPage
 
@@ -63,6 +68,29 @@ func newPlacesPage(settings *settingsrv.Settings) *PlacesPage {
 	localGroup.SetTitle("Local")
 	localGroup.Add(receiver.localListBox)
 
+	// network section (auto-discovered services)
+	receiver.networkListBox = gtk.NewListBox()
+	receiver.networkListBox.SetSelectionMode(gtk.SelectionNone)
+	receiver.networkListBox.AddCSSClass("boxed-list")
+
+	receiver.networkListBox.ConnectRowActivated(func(row *gtk.ListBoxRow) {
+		if nil == receiver.OnNetworkActivated {
+			return
+		}
+
+		index := row.Index()
+		if index < 0 || index >= len(receiver.networkServices) {
+			return
+		}
+
+		receiver.OnNetworkActivated(receiver.networkServices[index])
+	})
+
+	receiver.networkGroup = adw.NewPreferencesGroup()
+	receiver.networkGroup.SetTitle("Network")
+	receiver.networkGroup.Add(receiver.networkListBox)
+	receiver.networkGroup.SetVisible(false)
+
 	// webdav section
 	receiver.webdavGroup = adw.NewPreferencesGroup()
 	receiver.webdavGroup.SetTitle("WebDAV")
@@ -86,6 +114,7 @@ func newPlacesPage(settings *settingsrv.Settings) *PlacesPage {
 	receiver.contentBox.SetMarginStart(12)
 	receiver.contentBox.SetMarginEnd(12)
 	receiver.contentBox.Append(localGroup)
+	receiver.contentBox.Append(receiver.networkGroup)
 	receiver.contentBox.Append(receiver.webdavGroup)
 	receiver.contentBox.Append(addBtn)
 
@@ -117,6 +146,78 @@ func newPlacesPage(settings *settingsrv.Settings) *PlacesPage {
 	return &receiver
 }
 
+// AddNetworkService adds a discovered service to the Network section.
+// Called on the GTK main thread.
+func (receiver *PlacesPage) AddNetworkService(service discoversrv.DiscoveredService) {
+	receiver.networkServices = append(receiver.networkServices, service)
+
+	row := adw.NewActionRow()
+	row.SetTitle(service.Name)
+	row.SetSubtitle(service.Host)
+	row.SetActivatable(true)
+
+	icon := gtk.NewImageFromIconName("network-workgroup-symbolic")
+	row.AddPrefix(icon)
+
+	arrow := gtk.NewImageFromIconName("go-next-symbolic")
+	row.AddSuffix(arrow)
+
+	receiver.networkListBox.Append(row)
+	receiver.networkGroup.SetVisible(true)
+}
+
+// RemoveNetworkService removes a discovered service by name from the Network section.
+// Called on the GTK main thread.
+func (receiver *PlacesPage) RemoveNetworkService(name string) {
+	// find and remove from slice
+	found := false
+	var updated []discoversrv.DiscoveredService
+	for _, svc := range receiver.networkServices {
+		if svc.Name == name {
+			found = true
+			continue
+		}
+		updated = append(updated, svc)
+	}
+
+	if !found {
+		return
+	}
+
+	receiver.networkServices = updated
+	receiver.rebuildNetworkList()
+}
+
+// rebuildNetworkList clears and repopulates the network list box.
+func (receiver *PlacesPage) rebuildNetworkList() {
+	// clear existing rows
+	for {
+		child := receiver.networkListBox.FirstChild()
+		if nil == child {
+			break
+		}
+		receiver.networkListBox.Remove(child)
+	}
+
+	// repopulate
+	for _, svc := range receiver.networkServices {
+		row := adw.NewActionRow()
+		row.SetTitle(svc.Name)
+		row.SetSubtitle(svc.Host)
+		row.SetActivatable(true)
+
+		icon := gtk.NewImageFromIconName("network-workgroup-symbolic")
+		row.AddPrefix(icon)
+
+		arrow := gtk.NewImageFromIconName("go-next-symbolic")
+		row.AddSuffix(arrow)
+
+		receiver.networkListBox.Append(row)
+	}
+
+	receiver.networkGroup.SetVisible(len(receiver.networkServices) > 0)
+}
+
 // RebuildWebDAVList refreshes the WebDAV bookmarks section.
 func (receiver *PlacesPage) RebuildWebDAVList() {
 	receiver.buildWebDAVList()
@@ -124,8 +225,6 @@ func (receiver *PlacesPage) RebuildWebDAVList() {
 
 // buildWebDAVList populates the WebDAV section with saved bookmarks.
 func (receiver *PlacesPage) buildWebDAVList() {
-	// clear existing children from the preferences group
-	// AdwPreferencesGroup doesn't have RemoveAll, so we rebuild with a new ListBox
 	webdavListBox := gtk.NewListBox()
 	webdavListBox.SetSelectionMode(gtk.SelectionNone)
 	webdavListBox.AddCSSClass("boxed-list")

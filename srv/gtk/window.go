@@ -8,6 +8,7 @@ import (
 	"topotron/lib/backend"
 	"topotron/lib/fileinfo"
 	"topotron/lib/place"
+	"topotron/srv/discover"
 	"topotron/srv/log"
 	"topotron/srv/op"
 	"topotron/srv/settings"
@@ -31,6 +32,9 @@ type Window struct {
 	// pages
 	placesPage *PlacesPage
 
+	// services
+	discovery *discoversrv.Discovery
+
 	// state
 	backend       libbackend.FileBackend
 	settings      *settingsrv.Settings
@@ -47,6 +51,7 @@ func newWindow(app *adw.Application) *Window {
 
 	receiver.placesPage = newPlacesPage(receiver.settings)
 	receiver.placesPage.OnActivated = receiver.onPlaceActivated
+	receiver.placesPage.OnNetworkActivated = receiver.onNetworkActivated
 	receiver.placesPage.OnWebDAVActivated = receiver.onWebDAVActivated
 	receiver.placesPage.OnAddWebDAV = receiver.onAddWebDAV
 	receiver.placesPage.OnAbout = func() {
@@ -66,6 +71,20 @@ func newWindow(app *adw.Application) *Window {
 
 	setupShortcuts(&receiver)
 
+	// start mDNS discovery
+	receiver.discovery = discoversrv.New()
+	receiver.discovery.OnAdded = func(service discoversrv.DiscoveredService) {
+		receiver.placesPage.AddNetworkService(service)
+	}
+	receiver.discovery.OnRemoved = func(name string) {
+		receiver.placesPage.RemoveNetworkService(name)
+	}
+
+	receiver.window.ConnectCloseRequest(func() bool {
+		receiver.discovery.Stop()
+		return false
+	})
+
 	return &receiver
 }
 
@@ -82,6 +101,23 @@ func (receiver *Window) showHidden() bool {
 // onPlaceActivated handles a place being tapped on the home screen.
 func (receiver *Window) onPlaceActivated(place libplace.Place) {
 	receiver.pushFileBrowserWithBackend(receiver.backend, place.Path)
+}
+
+// onNetworkActivated handles a discovered network service being tapped.
+func (receiver *Window) onNetworkActivated(service discoversrv.DiscoveredService) {
+	log := logsrv.Begin()
+	defer log.End()
+
+	webdavBackend := libbackend.NewWebDAVBackend(service.URL(), "", "", service.Name)
+
+	err := webdavBackend.Connect()
+	if nil != err {
+		log.Highlightf("could not connect to network share: %s", service.URL())
+		receiver.showToast("Could not connect to share")
+		return
+	}
+
+	receiver.pushFileBrowserWithBackend(webdavBackend, "/")
 }
 
 // onWebDAVActivated handles a WebDAV bookmark being tapped.
@@ -189,7 +225,7 @@ func (receiver *Window) onPaste(destPath string) {
 	ctx := context.Background()
 
 	onProgress := func(current, total int, name string) {
-		// TODO: Phase 9 — show progress in loading overlay
+		// TODO: show progress in loading overlay
 	}
 
 	onDone := func(err error) {

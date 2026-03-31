@@ -8,6 +8,8 @@ require (
 	codeberg.org/reiver/go-log v0.0.0-20260325091745-1ba35503f77d
 	github.com/diamondburned/gotk4-adwaita/pkg v0.0.0-20250703085337-e94555b846b6
 	github.com/diamondburned/gotk4/pkg v0.3.2-0.20250703063411-16654385f59a
+	github.com/godbus/dbus/v5 v5.2.2
+	github.com/holoplot/go-avahi v1.0.1
 	github.com/studio-b12/gowebdav v0.12.0
 )
 
@@ -24,4 +26,5 @@ require (
 	golang.org/x/exp v0.0.0-20251125195548-87e1e737ad39 // indirect
 	golang.org/x/net v0.52.0 // indirect
 	golang.org/x/sync v0.18.0 // indirect
+	golang.org/x/sys v0.42.0 // indirect
 )

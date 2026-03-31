@@ -13,7 +13,8 @@
     "--socket=wayland",
     "--filesystem=home",
     "--filesystem=/media",
-    "--filesystem=/run/media"
+    "--filesystem=/run/media",
+    "--system-talk-name=org.freedesktop.Avahi"
   ],
   "build-options": {
     "env": {
