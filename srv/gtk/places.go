@@ -35,6 +35,7 @@ type PlacesPage struct {
 	OnAddWebDAV        func()
 	OnAbout            func()
 	OnUnpin            func(path string)
+	OnResetPins        func()
 }
 
 // newPlacesPage creates a new [PlacesPage] populated with the default places,
@@ -121,6 +122,10 @@ func newPlacesPage(settings *settingsrv.Settings) *PlacesPage {
 
 	// menu button with preferences
 	menuBtn := buildMainMenu(settings, func() {
+		if nil != receiver.OnResetPins {
+			receiver.OnResetPins()
+		}
+	}, func() {
 		if nil != receiver.OnAbout {
 			receiver.OnAbout()
 		}
@@ -364,8 +369,8 @@ func (receiver *PlacesPage) buildWebDAVList() {
 	receiver.webdavGroup.Add(webdavListBox)
 }
 
-// buildMainMenu creates the app menu with preferences toggles and about.
-func buildMainMenu(settings *settingsrv.Settings, onAbout func()) *gtk.MenuButton {
+// buildMainMenu creates the app menu with preferences toggles, reset pins, and about.
+func buildMainMenu(settings *settingsrv.Settings, onResetPins func(), onAbout func()) *gtk.MenuButton {
 	hiddenCheck := gtk.NewCheckButton()
 	hiddenCheck.SetActive(settings.ShowHidden())
 	hiddenCheck.ConnectToggled(func() {
@@ -377,6 +382,13 @@ func buildMainMenu(settings *settingsrv.Settings, onAbout func()) *gtk.MenuButto
 	hiddenRow.SetActivatable(true)
 	hiddenRow.AddSuffix(hiddenCheck)
 	hiddenRow.SetActivatableWidget(hiddenCheck)
+
+	resetRow := adw.NewActionRow()
+	resetRow.SetTitle("Reset Pinned Folders")
+	resetRow.SetActivatable(true)
+
+	resetIcon := gtk.NewImageFromIconName("edit-undo-symbolic")
+	resetRow.AddPrefix(resetIcon)
 
 	aboutRow := adw.NewActionRow()
 	aboutRow.SetTitle("About Topotron")
@@ -393,15 +405,24 @@ func buildMainMenu(settings *settingsrv.Settings, onAbout func()) *gtk.MenuButto
 	menuList.SetMarginStart(6)
 	menuList.SetMarginEnd(6)
 	menuList.Append(hiddenRow)
+	menuList.Append(resetRow)
 	menuList.Append(aboutRow)
 
 	popover := gtk.NewPopover()
 	popover.SetChild(menuList)
 
 	menuList.ConnectRowActivated(func(row *gtk.ListBoxRow) {
-		if 1 == row.Index() && nil != onAbout {
+		switch row.Index() {
+		case 1:
 			popover.Popdown()
-			onAbout()
+			if nil != onResetPins {
+				onResetPins()
+			}
+		case 2:
+			popover.Popdown()
+			if nil != onAbout {
+				onAbout()
+			}
 		}
 	})
 

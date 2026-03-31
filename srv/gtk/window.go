@@ -62,6 +62,11 @@ func newWindow(app *adw.Application) *Window {
 		receiver.placesPage.RebuildLocalList()
 		receiver.showToast("Unpinned from Places")
 	}
+	receiver.placesPage.OnResetPins = func() {
+		receiver.settings.ResetPinnedDirs()
+		receiver.placesPage.RebuildLocalList()
+		receiver.showToast("Pinned folders reset")
+	}
 
 	receiver.navView = adw.NewNavigationView()
 	receiver.navView.Add(receiver.placesPage.page)

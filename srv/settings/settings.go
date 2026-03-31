@@ -197,6 +197,17 @@ func (receiver *Settings) HasPinnedDir(path string) bool {
 	return false
 }
 
+// ResetPinnedDirs resets the pinned directories to the defaults and saves.
+func (receiver *Settings) ResetPinnedDirs() {
+	receiver.mu.Lock()
+	defaults := defaultPinnedDirs()
+	receiver.data.PinnedDirs = &defaults
+	receiver.mu.Unlock()
+
+	receiver.save()
+	receiver.notifyListeners()
+}
+
 func defaultPinnedDirs() []PinnedDir {
 	home, err := os.UserHomeDir()
 	if nil != err {
