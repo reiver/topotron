@@ -398,7 +398,8 @@ func (receiver *FileBrowserPage) rebuildSortMenu() {
 func (receiver *FileBrowserPage) buildBottomBar() *gtk.Revealer {
 	receiver.selectionLabel = gtk.NewLabel("0 selected")
 
-	cancelBtn := gtk.NewButtonWithLabel("Cancel")
+	cancelBtn := gtk.NewButtonFromIconName("window-close-symbolic")
+	cancelBtn.SetTooltipText("Cancel")
 	cancelBtn.ConnectClicked(func() {
 		receiver.exitSelectionMode()
 	})
@@ -428,11 +429,47 @@ func (receiver *FileBrowserPage) buildBottomBar() *gtk.Revealer {
 		receiver.onDelete()
 	})
 
-	renameBtn := gtk.NewButtonFromIconName("document-edit-symbolic")
-	renameBtn.SetTooltipText("Rename")
-	renameBtn.ConnectClicked(func() {
-		receiver.onRename()
+	// overflow menu for less-common actions (rename, pin, properties)
+	overflowList := gtk.NewListBox()
+	overflowList.SetSelectionMode(gtk.SelectionNone)
+
+	renameRow := adw.NewActionRow()
+	renameRow.SetTitle("Rename")
+	renameRow.SetIconName("document-edit-symbolic")
+	renameRow.SetActivatable(true)
+	overflowList.Append(renameRow)
+
+	pinRow := adw.NewActionRow()
+	pinRow.SetTitle("Pin to Places")
+	pinRow.SetIconName("view-pin-symbolic")
+	pinRow.SetActivatable(true)
+	overflowList.Append(pinRow)
+
+	propertiesRow := adw.NewActionRow()
+	propertiesRow.SetTitle("Properties")
+	propertiesRow.SetIconName("dialog-information-symbolic")
+	propertiesRow.SetActivatable(true)
+	overflowList.Append(propertiesRow)
+
+	overflowPopover := gtk.NewPopover()
+	overflowPopover.SetChild(overflowList)
+
+	overflowList.ConnectRowActivated(func(row *gtk.ListBoxRow) {
+		overflowPopover.Popdown()
+		switch row.Index() {
+		case 0:
+			receiver.onRename()
+		case 1:
+			receiver.onPin()
+		case 2:
+			receiver.onProperties()
+		}
 	})
+
+	moreBtn := gtk.NewMenuButton()
+	moreBtn.SetIconName("view-more-symbolic")
+	moreBtn.SetTooltipText("More Actions")
+	moreBtn.SetPopover(overflowPopover)
 
 	// layout: label | spacer | actions | cancel
 	actionBox := gtk.NewBox(gtk.OrientationHorizontal, 6)
@@ -440,7 +477,6 @@ func (receiver *FileBrowserPage) buildBottomBar() *gtk.Revealer {
 	actionBox.SetMarginBottom(6)
 	actionBox.SetMarginStart(12)
 	actionBox.SetMarginEnd(12)
-	actionBox.SetHAlign(gtk.AlignCenter)
 
 	actionBox.Append(receiver.selectionLabel)
 
@@ -448,30 +484,11 @@ func (receiver *FileBrowserPage) buildBottomBar() *gtk.Revealer {
 	spacer.SetHExpand(true)
 	actionBox.Append(spacer)
 
-	propertiesBtn := gtk.NewButtonFromIconName("dialog-information-symbolic")
-	propertiesBtn.SetTooltipText("Properties")
-	propertiesBtn.ConnectClicked(func() {
-		receiver.onProperties()
-	})
-
-	pinBtn := gtk.NewButtonFromIconName("view-pin-symbolic")
-	pinBtn.SetTooltipText("Pin to Places")
-	pinBtn.ConnectClicked(func() {
-		receiver.onPin()
-	})
-
 	actionBox.Append(selectAllBtn)
 	actionBox.Append(cutBtn)
 	actionBox.Append(copyBtn)
-	actionBox.Append(renameBtn)
-	actionBox.Append(pinBtn)
-	actionBox.Append(propertiesBtn)
 	actionBox.Append(deleteBtn)
-
-	spacer2 := gtk.NewBox(gtk.OrientationHorizontal, 0)
-	spacer2.SetHExpand(true)
-	actionBox.Append(spacer2)
-
+	actionBox.Append(moreBtn)
 	actionBox.Append(cancelBtn)
 
 	revealer := gtk.NewRevealer()
