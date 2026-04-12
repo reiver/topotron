@@ -7,7 +7,7 @@ It supports local filesystems, remote filesystems via WebDAV, and automatically 
 ## Other Files
 
 * The **user guide** for **topotron** is at: [GUIDE.md](GUIDE.md)
-* THe **developer guide** for **topotron** is at: [HACKING.md](HACKING.md)
+* The **developer guide** for **topotron** is at: [HACKING.md](HACKING.md)
 
 ## Build
 
