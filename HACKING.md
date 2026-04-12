@@ -10,7 +10,7 @@ App ID: `link.reiver.topotron`
 ## Build & Run
 
 ```bash
-go build -v # buikd
+go build -v # build
 
 ./topotron  # run
 ```
@@ -34,7 +34,7 @@ The codebase follows a **cfg/lib/srv** layered architecture:
 - **`srv/`** — Service layer (stateful, side-effectful):
   - `srv/settings/` — Persistent user preferences stored as JSON at `~/.config/topotron/settings.json`.
   - `srv/discover/` — mDNS/Avahi service discovery for `_webdav._tcp` shares via D-Bus.
-  - `srv/op/` — File operation orchestration (copy/move with progress callbacks).
+  - `srv/op/` — File operation orchestration (copy/move/delete with progress callbacks).
   - `srv/log/` — Structured logging via `codeberg.org/reiver/go-log`.
 
 ## Key Patterns
