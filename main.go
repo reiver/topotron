@@ -3,9 +3,16 @@ package main
 import (
 	"os"
 
-	"topotron/srv/gtk"
+	"topotron/gui"
+	"topotron/srv/log"
 )
 
 func main() {
-	os.Exit(gtksrv.Run())
+	log := logsrv.Begin()
+	defer log.End()
+
+	log.Highlightf("topotron ⚡")
+	defer log.Highlightf("topotron 👻")
+
+	os.Exit(gui.Run())
 }

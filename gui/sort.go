@@ -1,4 +1,4 @@
-package gtksrv
+package gui
 
 import (
 	"sort"
