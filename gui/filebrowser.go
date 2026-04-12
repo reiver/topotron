@@ -9,6 +9,7 @@ import (
 
 	"github.com/diamondburned/gotk4/pkg/core/glib"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
+	"github.com/diamondburned/gotk4/pkg/pango"
 	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
 
 	"topotron/lib/backend"
@@ -17,12 +18,26 @@ import (
 	"topotron/srv/log"
 )
 
+// fileRowWidgets holds per-recycled-row widget references, stored in a map
+// to avoid fragile child-tree traversal.
+type fileRowWidgets struct {
+	box       *gtk.Box
+	check     *gtk.CheckButton
+	icon      *gtk.Image
+	nameLabel *gtk.Label
+	sizeLabel *gtk.Label
+	arrow     *gtk.Image
+
+	position int // updated in Bind, read by gesture closure
+}
+
 // FileBrowserPage displays the contents of a directory and supports
 // selection mode for file operations, search filtering, and sorting.
 type FileBrowserPage struct {
 	// gtk widgets
 	page           *adw.NavigationPage
-	listBox        *gtk.ListBox
+	listView       *gtk.ListView
+	model          *gtk.StringList
 	contentStack   *gtk.Stack
 	header         *adw.HeaderBar
 	bottomRevealer *gtk.Revealer
@@ -35,17 +50,18 @@ type FileBrowserPage struct {
 	sortBtn        *gtk.MenuButton
 
 	// state
-	backend        libbackend.FileBackend
-	path           string
-	entries        []libfileinfo.FileInfo
-	displayEntries []libfileinfo.FileInfo
-	isSelecting    bool
-	selected       map[int]bool
-	checks         []*gtk.CheckButton
-	sortOrder      SortOrder
-	showHidden     bool
-	searchText     string
-	searchTimer    *time.Timer
+	backend          libbackend.FileBackend
+	path             string
+	entries          []libfileinfo.FileInfo
+	displayEntries   []libfileinfo.FileInfo
+	isSelecting      bool
+	selected         map[int]bool
+	rowWidgets       map[uintptr]*fileRowWidgets
+	longPressHandled bool
+	sortOrder        SortOrder
+	showHidden       bool
+	searchText       string
+	searchTimer      *time.Timer
 
 	// callbacks
 	OnDirectoryActivated func(path string)
@@ -70,23 +86,51 @@ func newFileBrowserPage(backend libbackend.FileBackend, path string, sortOrder S
 	receiver.sortOrder = sortOrder
 	receiver.showHidden = showHidden
 
-	// file list
-	receiver.listBox = gtk.NewListBox()
-	receiver.listBox.SetSelectionMode(gtk.SelectionNone)
-	receiver.listBox.AddCSSClass("boxed-list")
-	receiver.listBox.SetMarginTop(12)
-	receiver.listBox.SetMarginBottom(12)
-	receiver.listBox.SetMarginStart(12)
-	receiver.listBox.SetMarginEnd(12)
+	// row widget map
+	receiver.rowWidgets = make(map[uintptr]*fileRowWidgets)
 
-	receiver.listBox.ConnectRowActivated(func(row *gtk.ListBoxRow) {
-		receiver.onRowActivated(row)
+	// string list model (one dummy entry per file)
+	receiver.model = gtk.NewStringList(nil)
+
+	// factory
+	factory := gtk.NewSignalListItemFactory()
+	factory.ConnectSetup(func(object *glib.Object) {
+		listItem := object.Cast().(*gtk.ListItem)
+		receiver.onSetup(listItem)
+	})
+	factory.ConnectBind(func(object *glib.Object) {
+		listItem := object.Cast().(*gtk.ListItem)
+		receiver.onBind(listItem)
+	})
+	factory.ConnectUnbind(func(object *glib.Object) {
+		// nothing needed — no signals to disconnect; widget state is fully reset in the next Bind
+	})
+	factory.ConnectTeardown(func(object *glib.Object) {
+		listItem := object.Cast().(*gtk.ListItem)
+		delete(receiver.rowWidgets, listItem.Native())
+	})
+
+	// selection model (no selection — we manage it ourselves)
+	selModel := gtk.NewNoSelection(receiver.model)
+
+	// list view
+	receiver.listView = gtk.NewListView(selModel, &factory.ListItemFactory)
+	receiver.listView.AddCSSClass("boxed-list")
+	receiver.listView.SetShowSeparators(true)
+	receiver.listView.SetSingleClickActivate(true)
+	receiver.listView.SetMarginTop(12)
+	receiver.listView.SetMarginBottom(12)
+	receiver.listView.SetMarginStart(12)
+	receiver.listView.SetMarginEnd(12)
+
+	receiver.listView.ConnectActivate(func(position uint) {
+		receiver.onItemActivated(int(position))
 	})
 
 	scrolled := gtk.NewScrolledWindow()
 	scrolled.SetPolicy(gtk.PolicyNever, gtk.PolicyAutomatic)
 	scrolled.SetVExpand(true)
-	scrolled.SetChild(receiver.listBox)
+	scrolled.SetChild(receiver.listView)
 
 	clamp := adw.NewClamp()
 	clamp.SetMaximumSize(600)
@@ -183,6 +227,88 @@ func newFileBrowserPage(backend libbackend.FileBackend, path string, sortOrder S
 	receiver.load()
 
 	return &receiver
+}
+
+// onSetup creates the row widget tree for a recycled list item.
+func (receiver *FileBrowserPage) onSetup(listItem *gtk.ListItem) {
+	widgets := &fileRowWidgets{}
+
+	// checkbox — non-interactive, purely visual
+	widgets.check = gtk.NewCheckButton()
+	widgets.check.SetCanTarget(false)
+	widgets.check.SetVisible(false)
+
+	// file/folder icon
+	widgets.icon = gtk.NewImageFromIconName("text-x-generic-symbolic")
+	widgets.icon.SetPixelSize(16)
+
+	// file name label
+	widgets.nameLabel = gtk.NewLabel("")
+	widgets.nameLabel.SetHExpand(true)
+	widgets.nameLabel.SetXAlign(0)
+	widgets.nameLabel.SetEllipsize(pango.EllipsizeEnd)
+
+	// file size label (hidden for directories)
+	widgets.sizeLabel = gtk.NewLabel("")
+	widgets.sizeLabel.AddCSSClass("dim-label")
+
+	// directory arrow (hidden for files)
+	widgets.arrow = gtk.NewImageFromIconName("go-next-symbolic")
+
+	// row box
+	widgets.box = gtk.NewBox(gtk.OrientationHorizontal, 6)
+	widgets.box.SetSizeRequest(-1, 48)
+	widgets.box.SetMarginStart(12)
+	widgets.box.SetMarginEnd(12)
+	widgets.box.SetMarginTop(6)
+	widgets.box.SetMarginBottom(6)
+	widgets.box.Append(widgets.check)
+	widgets.box.Append(widgets.icon)
+	widgets.box.Append(widgets.nameLabel)
+	widgets.box.Append(widgets.sizeLabel)
+	widgets.box.Append(widgets.arrow)
+
+	// long-press gesture — enters selection mode
+	widgets.position = -1 // no valid position until first Bind
+	longPress := gtk.NewGestureLongPress()
+	longPress.ConnectPressed(func(x, y float64) {
+		if receiver.isSelecting {
+			return // already in selection mode — don't re-enter (would clear selections)
+		}
+		receiver.longPressHandled = true
+		receiver.enterSelectionMode(widgets.position)
+	})
+	widgets.box.AddController(longPress)
+
+	listItem.SetChild(widgets.box)
+	receiver.rowWidgets[listItem.Native()] = widgets
+}
+
+// onBind populates a recycled row with data from displayEntries.
+func (receiver *FileBrowserPage) onBind(listItem *gtk.ListItem) {
+	widgets := receiver.rowWidgets[listItem.Native()]
+	pos := int(listItem.Position())
+	widgets.position = pos
+
+	entry := receiver.displayEntries[pos]
+
+	// icon and name
+	widgets.icon.SetFromIconName(entry.Icon)
+	widgets.nameLabel.SetLabel(entry.Name)
+
+	// size label vs arrow (mutually exclusive)
+	if entry.IsDir {
+		widgets.sizeLabel.SetVisible(false)
+		widgets.arrow.SetVisible(!receiver.isSelecting)
+	} else {
+		widgets.sizeLabel.SetLabel(libformat.Size(entry.Size))
+		widgets.sizeLabel.SetVisible(true)
+		widgets.arrow.SetVisible(false)
+	}
+
+	// checkbox — no signal blocking needed (checkbox is non-interactive)
+	widgets.check.SetVisible(receiver.isSelecting)
+	widgets.check.SetActive(receiver.selected[pos])
 }
 
 // buildSortMenu creates the sort order menu button.
@@ -384,7 +510,7 @@ func (receiver *FileBrowserPage) load() {
 	}()
 }
 
-// applyFilterAndSort filters and sorts the entries, then rebuilds the list.
+// applyFilterAndSort filters and sorts the entries, then rebuilds the model.
 func (receiver *FileBrowserPage) applyFilterAndSort() {
 	filtered := FilterEntries(receiver.entries, receiver.searchText)
 
@@ -393,90 +519,66 @@ func (receiver *FileBrowserPage) applyFilterAndSort() {
 	SortEntries(display, receiver.sortOrder)
 
 	receiver.displayEntries = display
-	receiver.populate()
+	receiver.selected = make(map[int]bool) // clear selection — indices are no longer valid
+	receiver.rebuildModel()
 }
 
-// populate fills the [gtk.ListBox] with rows for the current display entries.
-func (receiver *FileBrowserPage) populate() {
+// rebuildModel replaces the StringList contents to match displayEntries.
+func (receiver *FileBrowserPage) rebuildModel() {
 	if 0 == len(receiver.displayEntries) {
+		receiver.model.Splice(0, receiver.model.NItems(), nil)
 		receiver.contentStack.SetVisibleChildName("placeholder")
 		return
 	}
 
-	receiver.checks = nil
-	receiver.clearListBox()
-
-	for i, entry := range receiver.displayEntries {
-		row := receiver.buildRow(i, entry)
-		receiver.listBox.Append(row)
-	}
-
+	receiver.model.Splice(0, receiver.model.NItems(), dummyStrings(len(receiver.displayEntries)))
 	receiver.contentStack.SetVisibleChildName("content")
 }
 
-// clearListBox removes all children from the list box.
-func (receiver *FileBrowserPage) clearListBox() {
-	for {
-		child := receiver.listBox.FirstChild()
-		if nil == child {
-			break
+// refreshVisibleRows updates checkbox/arrow visibility on all currently
+// recycled rows without touching the model. Used when only presentation
+// changes (entering/exiting selection mode).
+func (receiver *FileBrowserPage) refreshVisibleRows() {
+	for _, widgets := range receiver.rowWidgets {
+		pos := widgets.position
+		if pos < 0 || pos >= len(receiver.displayEntries) {
+			continue
 		}
-		receiver.listBox.Remove(child)
+		entry := receiver.displayEntries[pos]
+
+		// checkbox visibility and state (no signal blocking needed — checkbox is non-interactive)
+		widgets.check.SetVisible(receiver.isSelecting)
+		widgets.check.SetActive(receiver.selected[pos])
+
+		// arrow visibility: shown for dirs when NOT selecting
+		if entry.IsDir {
+			widgets.arrow.SetVisible(!receiver.isSelecting)
+		}
 	}
 }
 
-// buildRow creates an [adw.ActionRow] for a file entry, with optional check button.
-func (receiver *FileBrowserPage) buildRow(index int, entry libfileinfo.FileInfo) *adw.ActionRow {
-	row := adw.NewActionRow()
-	row.SetTitle(entry.Name)
-	row.SetActivatable(true)
-
-	// long-press gesture for entering selection mode
-	if !receiver.isSelecting {
-		idx := index
-		longPress := gtk.NewGestureLongPress()
-		longPress.ConnectPressed(func(x, y float64) {
-			receiver.enterSelectionMode(idx)
-		})
-		row.AddController(longPress)
-	}
-
-	if receiver.isSelecting {
-		check := gtk.NewCheckButton()
-		check.SetActive(receiver.selected[index])
-		check.ConnectToggled(func() {
-			if check.Active() {
-				receiver.selected[index] = true
-			} else {
-				delete(receiver.selected, index)
-			}
-			receiver.updateSelectionCount()
-		})
-		receiver.checks = append(receiver.checks, check)
-		row.AddPrefix(check)
-	}
-
-	icon := gtk.NewImageFromIconName(entry.Icon)
-	row.AddPrefix(icon)
-
-	if entry.IsDir {
-		if !receiver.isSelecting {
-			arrow := gtk.NewImageFromIconName("go-next-symbolic")
-			row.AddSuffix(arrow)
+// updateCheckboxAt updates only the tapped row's checkbox during selection toggle.
+func (receiver *FileBrowserPage) updateCheckboxAt(index int) {
+	for _, widgets := range receiver.rowWidgets {
+		if widgets.position == index {
+			widgets.check.SetActive(receiver.selected[index])
+			return
 		}
-	} else {
-		sizeLabel := gtk.NewLabel(libformat.Size(entry.Size))
-		sizeLabel.AddCSSClass("dim-label")
-		row.AddSuffix(sizeLabel)
 	}
+}
 
-	return row
+// dummyStrings returns a slice of n empty strings for use as StringList entries.
+func dummyStrings(n int) []string {
+	result := make([]string, n)
+	return result
 }
 
 // Refresh reloads the directory contents.
 func (receiver *FileBrowserPage) Refresh() {
+	if receiver.isSelecting {
+		receiver.exitSelectionMode()
+	}
 	receiver.contentStack.SetVisibleChildName("loading")
-	receiver.selected = make(map[int]bool)
 	receiver.load()
 }
 
@@ -507,7 +609,8 @@ func (receiver *FileBrowserPage) enterSelectionMode(initialIndex int) {
 	receiver.searchBtn.SetVisible(false)
 	receiver.sortBtn.SetVisible(false)
 	receiver.bottomRevealer.SetRevealChild(true)
-	receiver.populate()
+
+	receiver.refreshVisibleRows()
 	receiver.updateSelectionCount()
 }
 
@@ -521,17 +624,19 @@ func (receiver *FileBrowserPage) exitSelectionMode() {
 	receiver.sortBtn.SetVisible(true)
 	receiver.UpdatePasteButton()
 	receiver.bottomRevealer.SetRevealChild(false)
-	receiver.populate()
+
+	receiver.refreshVisibleRows()
 }
 
 // selectAll selects all display entries.
 func (receiver *FileBrowserPage) selectAll() {
+	if !receiver.isSelecting {
+		return
+	}
 	for i := range receiver.displayEntries {
 		receiver.selected[i] = true
 	}
-	for _, check := range receiver.checks {
-		check.SetActive(true)
-	}
+	receiver.refreshVisibleRows()
 	receiver.updateSelectionCount()
 }
 
@@ -556,26 +661,25 @@ func (receiver *FileBrowserPage) selectedEntries() []libfileinfo.FileInfo {
 	return result
 }
 
-// onRowActivated handles a tap on a row.
-func (receiver *FileBrowserPage) onRowActivated(row *gtk.ListBoxRow) {
-	index := row.Index()
+// onItemActivated handles a tap on a list item.
+func (receiver *FileBrowserPage) onItemActivated(index int) {
+	// guard against long-press + activate double-fire
+	if receiver.longPressHandled {
+		receiver.longPressHandled = false
+		return
+	}
+
 	if index < 0 || index >= len(receiver.displayEntries) {
 		return
 	}
 
 	if receiver.isSelecting {
-		// toggle selection
 		if receiver.selected[index] {
 			delete(receiver.selected, index)
-			if index < len(receiver.checks) {
-				receiver.checks[index].SetActive(false)
-			}
 		} else {
 			receiver.selected[index] = true
-			if index < len(receiver.checks) {
-				receiver.checks[index].SetActive(true)
-			}
 		}
+		receiver.updateCheckboxAt(index)
 		receiver.updateSelectionCount()
 		return
 	}
